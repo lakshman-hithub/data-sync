@@ -1,0 +1,28 @@
+{{ if .Values.ums.enabled }}
+apiVersion: v1
+kind: Service
+metadata:
+  annotations:
+  {{ if .Values.podTLS.enabled }}
+    projectcontour.io/upstream-protocol.tls: 8443,https  # https://projectcontour.io/docs/main/config/upstream-tls/
+  {{ end }}
+  name: platform-ums
+  labels:
+    {{- include "howso-platform.ums.labels" . | nindent 4 }}
+spec:
+  type: ClusterIP 
+  ports:
+    {{ if .Values.podTLS.enabled }}
+    - port: 8443 
+      targetPort: 8443 
+      protocol: TCP
+      name: https
+    {{ else }}
+    - port: 8000 
+      targetPort: 8000 
+      protocol: TCP
+      name: http
+    {{ end }}
+  selector:
+    {{- include "howso-platform.ums.selectorLabels" . | nindent 4 }}
+{{- end }}

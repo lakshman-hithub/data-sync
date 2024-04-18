@@ -1,0 +1,18 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: platform-configmap-replicated
+data:
+  IS_INGRESS_ENABLED: "{{ .Values.overrideIngressCerts.enabled}}"
+  IS_PYPI_ENABLED: "{{ .Values.pypi.enabled}}"
+  HOWSO_REPLICATED_VERSION: "{{ .Values.replicated.versionLabel | default "None" }}"
+  HOWSO_REPLICATED_SEQ: "{{ .Values.replicated.replicatedSeq | default "None" }}"
+  HOWSO_REPLICATED_CHANNEL: "{{ .Values.replicated.replicatedChannel | default "None" }}"
+  HOWSO_LICENSE_ID: "{{ .Values.replicated.license.id | default "None" }}"
+  HOWSO_LICENSE_EXPIRES_AT : "{{ .Values.replicated.license.expiresAt | default "None" }}"
+  HOWSO_LICENSE_GEMINAI_ENABLED: "{{ .Values.replicated.license.geminai | default "None" }}"
+  HOWSO_LICENSE_REACTOR_ENABLED: "{{ .Values.replicated.license.reactor | default "None" }}"
+  HOWSO_LICENSE_TYPE: "{{ .Values.replicated.license.type | default "None" }}"
+  HOWSO_AIRGAP_ENABLED: '{{ .Values.replicated.isAirgap | default "None" }}'
+  HOWSO_CUSTOMER_NAME: '{{ .Values.replicated.customerName | default "None" }}'
+  HOWSO_REPLICATED_ENABLED: '{{ .Values.replicated.isReplicatedOnprem }}'

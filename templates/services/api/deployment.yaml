@@ -1,0 +1,311 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "howso-platform.api.fullname" . }}
+  labels:
+    app.kubernetes.io/part-of: howso-platform
+    app.kubernetes.io/component: api-service
+    {{- include "howso-platform.api.labels" . | nindent 4 }}
+spec:
+  replicas: {{ .Values.api.replicaCount }}
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+  minReadySeconds: 10
+  selector:
+    matchLabels:
+      {{- include "howso-platform.api.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      annotations:
+      {{- with .Values.api.podAnnotations }}
+        {{ toYaml . | nindent 8 }}
+      {{- end }}
+        checksum/nats: {{ include (print $.Template.BasePath "/configmaps/configmap-nats-connection.yml") . | sha256sum }}
+        checksum/redis: {{ include (print $.Template.BasePath "/configmaps/configmap-redis-connection.yml") . | sha256sum }}
+        checksum/ui2: {{ include (print $.Template.BasePath "/configmaps/configmap-ui2-connection.yml") . | sha256sum }}
+        checksum/ums: {{ include (print $.Template.BasePath "/configmaps/configmap-ums-connection.yml") . | sha256sum }}
+        checksum/obj: {{ include (print $.Template.BasePath "/configmaps/configmap-object-store-connection.yml") . | sha256sum }}
+      labels:
+        app.kubernetes.io/part-of: howso-platform
+        app.kubernetes.io/component: api-service
+        {{- include "howso-platform.api.selectorLabels" . | nindent 8 }}
+    spec:
+      serviceAccountName: platform-api-serviceaccount
+      tolerations:
+        {{- toYaml .Values.tolerations.services | nindent 8 }}
+      {{- with .Values.images.pullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      securityContext:
+        {{- toYaml .Values.api.podSecurityContext | nindent 8 }}
+      # This is to make sure any race between a configmap update, and the api - is won by the configmap
+      initContainers:
+        - name: initial-delay
+          securityContext:
+            {{- toYaml .Values.api.securityContext | nindent 12 }}
+          image: {{ include "howso-platform.imagePath" (dict "root" $ "image" .Values.api.image) | quote }}
+          command: ['sh', '-c', "/container_files/bin/init.sh"]
+          args: ['pwd']
+          volumeMounts:
+            - name: oauth-keys
+              mountPath: "/keys/oauth"
+              readOnly: true
+            - name: shared-pod-keys
+              mountPath: /app/keys
+          resources:
+            limits:
+              cpu: 100m
+              memory: 100Mi
+            requests:
+              cpu: 100m
+              memory: 100Mi
+      containers:
+        - name: api
+          securityContext:
+            {{- toYaml .Values.api.securityContext | nindent 12 }}
+          image: {{ include "howso-platform.imagePath" (dict "root" $ "image" .Values.api.image) | quote }}
+          imagePullPolicy: {{ .Values.images.pullPolicy }}
+          envFrom:
+          - configMapRef:
+              name: platform-configmap-redis-connection
+          - configMapRef:
+              name: platform-configmap-object-store-connection
+          - configMapRef:
+              name: platform-configmap-ui2-connection
+          env:
+          - name: HOWSO_PLATFORM_NAMESPACE
+            value: {{ .Release.Namespace }}
+          - name: HOWSO_SECRET_KEY
+            value: /secrets/api-secret-key/secret
+          - name: HOWSO_PARENT_DOMAIN
+            value: {{ .Values.domain }}
+          - name: HOWSO_SERVER_DOMAIN
+            value: {{ .Values.api.subdomain }}.{{ .Values.domain }}
+          - name: HOWSO_PLATFORM_VERSION
+            valueFrom:
+              configMapKeyRef:
+                name: platform-configmap
+                key: HOWSO_PLATFORM_VERSION
+          - name: HOWSO_OAUTH_JWT_PUBLIC_KEY
+            value: /app/keys/oauth-pub.pem
+          - name: HOWSO_OAUTH_SERVER_URL
+            valueFrom:
+              configMapKeyRef:
+                name: platform-configmap-ums-connection
+                key: HOWSO_UMS_URL
+          - name: HOWSO_PLATFORM_ENV
+            valueFrom:
+              configMapKeyRef:
+                name: platform-configmap
+                key: HOWSO_ENV
+          - name: HOWSO_UI_ORIGIN
+            valueFrom:
+              configMapKeyRef:
+                name: platform-configmap-ui2-connection
+                key: HOWSO_UI_V2_ORIGIN
+          - name: HOWSO_INTERNAL_APIS_ENABLED
+            value: {{ if eq (toString .Values.api.internalApis.enabled) "true" }}"true"{{ else }}"false"{{ end }}
+          - name: HOWSO_JOBS_ENABLED
+            value: {{ if eq (toString .Values.jobRunner.enabled) "true" }}"true"{{ else }}"false"{{ end }}
+          - name: HOWSO_CERT_BUNDLE
+            value: "/certs/platform-ca-publickey.crt"
+          - name: HOWSO_LOG_LEVEL
+            value: {{ if (.Values.api.logLevel) }}{{ .Values.api.logLevel | quote }}{{ else }}{{ .Values.logLevel | quote }}{{ end }}
+          - name: HOWSO_LOG_FORMAT
+            value: {{ if (.Values.api.logFormat) }}{{ .Values.api.logFormat | quote }}{{ else }}{{ .Values.logFormat | quote }}{{ end }}
+          - name: HOWSO_REDIS_PW
+            value: /secrets/redis-password/{{ .Values.datastores.redis.passwordDataKey }}
+          - name: HOWSO_REDIS_SERVER_SSL_CERTCHAIN_FILE
+            value: /access-certs/redis/redis-server-ca.crt
+          - name: HOWSO_REDIS_CLIENT_SSL_CERT_FILE
+            value: /client-certs/redis/tls.crt
+          - name: HOWSO_REDIS_CLIENT_SSL_KEY_FILE
+            value: /client-certs/redis/tls.key
+          - name: HOWSO_OBJECT_STORE_TRUSTED_CERT_PATH
+            value: /access-certs/objstore/object-store-certchain.crt
+          - name: HOWSO_OBJECT_STORE_ACCESS_KEY
+            valueFrom:
+              secretKeyRef:
+                name: {{if .Values.datastores.objectStore.existingSecret }}{{ .Values.datastores.objectStore.credentialsSecretName }}{{ else }}platform-object-store-credentials{{ end }}
+                key: {{ .Values.datastores.objectStore.accesskeyDataKey }}
+          - name: HOWSO_OBJECT_STORE_SECRET_KEY
+            valueFrom:
+              secretKeyRef:
+                name: {{if .Values.datastores.objectStore.existingSecret }}{{ .Values.datastores.objectStore.credentialsSecretName }}{{ else }}platform-object-store-credentials{{ end }}
+                key: {{ .Values.datastores.objectStore.secretkeyDataKey }}
+          - name: HOWSO_NATS_SERVER_LIST
+            valueFrom:
+              configMapKeyRef:
+                name: platform-configmap-nats-connection
+                key: NATS_SERVER_LIST
+          - name: HOWSO_NATS_TLS_ENABLED
+            valueFrom:
+              configMapKeyRef:
+                name: platform-configmap-nats-connection
+                key: NATS_TLS_ENABLED
+          - name: HOWSO_NATS_PUBLIC_KEY
+            value: "/certs/platform-ca-publickey.crt"
+          - name: HOWSO_NATS_TLS_CERT
+            value: "/keys/nats/tls.crt"
+          - name: HOWSO_NATS_TLS_KEY
+            value: "/keys/nats/tls.key"
+          {{ if .Values.api.timeouts.natsJSAck }}
+          - name: HOWSO_NATS_JETSTREAM_ACK_TIMEOUT
+            value: {{ .Values.api.timeouts.natsJSAck | quote }}
+          {{ end }}
+          {{ if .Values.api.timeouts.natsJSReply }}
+          - name: HOWSO_NATS_JETSTREAM_REPLY_TIMEOUT
+            value: {{ .Values.api.timeouts.natsJSReply | quote }}
+          {{ end }}
+          {{ if .Values.api.timeouts.natsReply }}
+          - name: HOWSO_NATS_REPLY_TIMEOUT
+            value: {{ .Values.api.timeouts.natsReply | quote }}
+          {{ end }}
+          {{ if .Values.api.cors.allowedOrigins }}
+          - name: HOWSO_CORS_ALLOWED_ORIGINS
+            value: {{ .Values.api.cors.allowedOrigins | quote }}
+          {{ end }}
+          ports:
+          {{ if .Values.podTLS.enabled }}
+            - name: https
+              containerPort: 8443
+              protocol: TCP
+          {{ else }}
+            - name: http
+              containerPort: 8080
+              protocol: TCP
+          {{ end }}
+          livenessProbe:
+            tcpSocket:
+               port: 8080
+            failureThreshold: 3
+            periodSeconds: 10
+            initialDelaySeconds: 5
+            timeoutSeconds: 5
+          volumeMounts:
+          {{- if .Values.nats.tls.enabled }}
+          - name: platform-api-v3-nats-client-tls
+            mountPath: /keys/nats/
+            readOnly: true
+          {{- end }}
+          - name: oauth-keys
+            mountPath: /keys/oauth/
+            readOnly: true
+          - name: {{ .Values.internalPKI.rootCASecretName }}
+            mountPath: /certs/
+            readOnly: true
+          - name: shared-pod-keys
+            mountPath: /app/keys
+          {{- if .Values.datastores.redis.clientVerification }}
+          - mountPath: /client-certs/redis/
+            name: redis-client-tls
+          {{- end }}
+          {{- if and (.Values.datastores.redis.serverVerification) (.Values.datastores.redis.serverVerificationCustomCertChain) }}
+          - mountPath: /access-certs/redis/
+            name: redis-server-ca
+          {{- end }}
+          {{- if and (.Values.datastores.objectStore.serverVerification) (.Values.datastores.objectStore.serverVerificationCustomCertChain) }}
+          - mountPath: /access-certs/objstore/
+            name: object-store-crtchain
+          {{- end }}
+          - name: fastapi-secret-key
+            mountPath: /secrets/api-secret-key
+          - name: redis-password
+            mountPath: /secrets/redis-password
+          resources:
+            {{- toYaml .Values.api.resources | nindent 12 }}
+      {{ if .Values.podTLS.enabled }}
+        - name: tls-sidecar
+          image: {{ include "howso-platform.imagePath" (dict "root" $ "image" .Values.podTLS.image) | quote }}
+          imagePullPolicy: Always
+          command: ["nginx", "-g", "daemon off;"]
+          volumeMounts:
+            - name: platform-api-v3-server-tls
+              mountPath: /certs/
+            - name: tls-config-volume
+              mountPath: /etc/nginx/nginx.conf
+              subPath: nginx.conf
+            - name: nginx-cache-volume
+              mountPath: /var/cache/nginx
+          securityContext:
+          {{- toYaml .Values.podTLS.securityContext | nindent 12 }}
+      {{- end }}
+      {{- with .Values.api.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.api.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.api.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      automountServiceAccountToken: true
+      volumes:
+      - name: nginx-cache-volume
+        emptyDir:
+          medium: Memory
+      - name: shared-pod-keys
+        emptyDir:
+          medium: Memory
+          sizeLimit: 1Mi
+      - name: redis-password
+        secret:
+          secretName: {{if .Values.datastores.redis.existingSecret }}{{ .Values.datastores.redis.credentialsSecretName }}{{ else }}platform-redis-credentials{{ end }}
+      - name: fastapi-secret-key
+        secret:
+          secretName: platform-api-v3-secret-key
+      {{- if .Values.podTLS.enabled }}
+      - name: platform-api-v3-server-tls
+        secret:
+          secretName: platform-api-v3-server-tls
+      {{- end }}
+      - name: tls-config-volume
+        configMap:
+          name: platform-api-v3-tls-sidecar-nginx-config
+      {{- if .Values.nats.tls.enabled }}
+      - name: platform-api-v3-nats-client-tls
+        secret:
+          defaultMode: 420
+          secretName: platform-api-v3-nats-client-tls
+      {{- end }}
+      {{- if and (.Values.datastores.objectStore.serverVerification) (.Values.datastores.objectStore.serverVerificationCustomCertChain) }}
+      - name: object-store-crtchain
+        secret:
+          defaultMode: 420
+          secretName: {{ default .Values.internalPKI.rootCASecretName .Values.datastores.objectStore.serverCertChainSecretName }}
+          items:
+            - key: ca.crt
+              path: object-store-certchain.crt
+      {{- end }}
+      - name: oauth-keys
+        secret:
+          secretName: platform-ums-oauth-keys
+      - name: {{ .Values.internalPKI.rootCASecretName }}
+        secret:
+          defaultMode: 420
+          secretName: {{ .Values.internalPKI.rootCASecretName }}
+          items:
+            - key: ca.crt
+              path: platform-ca-publickey.crt
+      {{- if .Values.datastores.redis.clientVerification }}
+      - name: redis-client-tls
+        secret:
+          defaultMode: 420
+          secretName: {{ .Values.datastores.redis.clientCertSecretName }}
+      {{- end }}
+      {{- if and (.Values.datastores.redis.serverVerification) (.Values.datastores.redis.serverVerificationCustomCertChain) }}
+      - name: redis-server-ca
+        secret:
+          defaultMode: 420
+          secretName: {{ default .Values.internalPKI.rootCASecretName .Values.datastores.redis.serverCertChainSecretName }}
+          items:
+            - key: ca.crt
+              path: redis-server-ca.crt
+      {{- end }}

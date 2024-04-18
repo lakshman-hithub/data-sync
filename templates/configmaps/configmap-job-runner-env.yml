@@ -1,0 +1,10 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: platform-configmap-job-runner-env
+data:
+  # Since the job runner is created dynamically - it is simpler to have these value in a configmap,
+  # and read directly - rather than pass it in via the operator, and configured from there.
+  HOWSO_LOG_LEVEL: {{ if (.Values.jobRunner.logLevel) }}{{ .Values.jobRunner.logLevel | quote }}{{ else }}{{ .Values.logLevel | quote }}{{ end }}
+  HOWSO_LOG_FORMAT: {{ if (.Values.jobRunner.logFormat) }}{{ .Values.jobRunner.logFormat | quote }}{{ else }}{{ .Values.logFormat | quote }}{{ end }}
+  HOWSO_AMLG_DEBUG: {{ .Values.jobRunner.trace.enabled | quote }}

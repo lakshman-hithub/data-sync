@@ -1,0 +1,255 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "howso-platform.restapi.fullname" . }}
+  labels:
+    app.kubernetes.io/part-of: howso-platform
+    app.kubernetes.io/component: rest-api-service
+    {{- include "howso-platform.restapi.labels" . | nindent 4 }}
+spec:
+  replicas: {{ .Values.restapi.replicaCount }}
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+  minReadySeconds: 10
+  selector:
+    matchLabels:
+      {{- include "howso-platform.restapi.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      annotations:
+      {{- with .Values.restapi.podAnnotations }}
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+        checksum/nats: {{ include (print $.Template.BasePath "/configmaps/configmap-nats-connection.yml") . | sha256sum }}
+        checksum/redis: {{ include (print $.Template.BasePath "/configmaps/configmap-redis-connection.yml") . | sha256sum }}
+        checksum/ui2: {{ include (print $.Template.BasePath "/configmaps/configmap-ui2-connection.yml") . | sha256sum }}
+        checksum/ums: {{ include (print $.Template.BasePath "/configmaps/configmap-ums-connection.yml") . | sha256sum }}
+        checksum/apitoken: {{ include (print $.Template.BasePath "/services/restapi/restapi-ums-api-token.yaml") . | sha256sum }}
+      labels:
+        app.kubernetes.io/part-of: howso-platform
+        app.kubernetes.io/component: rest-api-service
+        {{- include "howso-platform.restapi.selectorLabels" . | nindent 8 }}
+    spec:
+      serviceAccountName: platform-minimal-serviceaccount
+      serviceAccount: platform-minimal-serviceaccount
+      tolerations:
+        {{- toYaml .Values.tolerations.services | nindent 8 }}
+      {{- with .Values.images.pullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      securityContext:
+        {{- toYaml .Values.restapi.podSecurityContext | nindent 8 }}
+      # This is to make sure any race between a configmap update, and the restapi - is won by the configmap
+      initContainers:
+        - name: initial-delay
+          securityContext:
+            {{- toYaml .Values.restapi.securityContext | nindent 12 }}
+          image: {{ include "howso-platform.imagePath" (dict "root" $ "image" .Values.restapi.image) | quote }}
+          command: ['sh', '-c', "sleep 5"]
+          resources:
+            limits:
+              cpu: 100m
+              memory: 100Mi
+            requests:
+              cpu: 100m
+              memory: 100Mi
+      containers:
+        - name: restapi
+          securityContext:
+            {{- toYaml .Values.restapi.securityContext | nindent 12 }}
+          image: {{ include "howso-platform.imagePath" (dict "root" $ "image" .Values.restapi.image) | quote }}
+          imagePullPolicy: {{ .Values.images.pullPolicy }}
+          envFrom:
+          - configMapRef:
+              name: platform-configmap-ui2-connection
+          - configMapRef:
+              name: platform-configmap-redis-connection
+          - configMapRef:
+              name: platform-configmap-nats-connection
+          - configMapRef:
+              name: platform-configmap-ums-connection
+          env:
+          - name: TMPDIR
+            value: "/tmp/dp/"
+          - name: HOWSO_PARENT_DOMAIN
+            value: {{ .Values.domain }}
+          - name: FLASK_ENV
+            valueFrom:
+              configMapKeyRef:
+                name: platform-configmap
+                key: HOWSO_ENV
+          - name: HOWSO_RESTAPI_INTERNAL_APIS_ENABLED
+            value: {{ if eq (toString .Values.restapi.internalApis.enabled) "true" }}"true"{{ else }}"false"{{ end }}
+          - name: REQUESTS_CA_BUNDLE
+            value: "/certs/platform-ca-publickey.crt"
+          - name: HOWSO_LOG_LEVEL
+            value: {{ if (.Values.restapi.logLevel) }}{{ .Values.restapi.logLevel | quote }}{{ else }}{{ .Values.logLevel | quote }}{{ end }}
+          - name: HOWSO_LOG_FORMAT
+            value: {{ if (.Values.restapi.logFormat) }}{{ .Values.restapi.logFormat | quote }}{{ else }}{{ .Values.logFormat | quote }}{{ end }}
+          {{ if .Values.restapi.cors.allowedOrigins }}
+          - name: HOWSO_CORS_ALLOWED_ORIGINS
+            value: {{ .Values.restapi.cors.allowedOrigins | quote }}
+          {{ end }}
+          {{ if .Values.restapi.timeouts.natsJSAck }}
+          - name: NATS_JETSTREAM_ACK_TIMEOUT
+            value: {{ .Values.restapi.timeouts.natsJSAck | quote }}
+          {{ end }}
+          {{ if .Values.restapi.timeouts.natsJSReply }}
+          - name: NATS_JETSTREAM_REPLY_TIMEOUT
+            value: {{ .Values.restapi.timeouts.natsJSReply | quote }}
+          {{ end }}
+          {{ if .Values.restapi.timeouts.natsReply }}
+          - name: NATS_REPLY_TIMEOUT
+            value: {{ .Values.restapi.timeouts.natsReply | quote }}
+          {{ end }}
+          {{ if .Values.restapi.gunicornThreads }}
+          - name: HOWSO_GUNICORN_THREADS
+            value: {{ .Values.restapi.gunicornThreads | quote }}
+          {{ end }}
+          {{ if .Values.restapi.gunicornWorkers }}
+          - name: HOWSO_GUNICORN_WORKERS
+            value: {{ .Values.restapi.gunicornWorkers | quote }}
+          {{ end }}
+          {{ if .Values.restapi.timeouts.gunicorn}}
+          - name: HOWSO_GUNICORN_TIMEOUT
+            value: {{ .Values.restapi.timeouts.gunicorn | quote }}
+          {{ end }}
+          {{ if .Values.restapi.timeouts.gunicornGraceful}}
+          - name: HOWSO_GUNICORN_GRACEFUL_TIMEOUT
+            value: {{ .Values.restapi.timeouts.gunicornGraceful | quote }}
+          {{ end }}
+          {{ if .Values.restapi.gunicornMaxRequests}}
+          - name: HOWSO_GUNICORN_MAX_REQUESTS
+            value: {{ .Values.restapi.gunicornMaxRequests | quote }}
+          {{ end }}
+          {{ if .Values.restapi.timeouts.gunicornKeepalive}}
+          - name: HOWSO_GUNICORN_KEEPALIVE_TIMEOUT
+            value: {{ .Values.restapi.timeouts.gunicornKeepalive | quote }}
+          {{ end }}
+          ports:
+          {{ if .Values.podTLS.enabled }}
+            - name: https
+              containerPort: 8443
+              protocol: TCP
+          {{ else }}
+            - name: http
+              containerPort: 8080
+              protocol: TCP
+          {{ end }}
+          livenessProbe:
+            tcpSocket:
+               port: 8080
+            failureThreshold: 3
+            periodSeconds: 10
+            initialDelaySeconds: 5
+            timeoutSeconds: 5
+          volumeMounts:
+          - name: temp-volume
+            mountPath: /tmp/dp
+          {{- if .Values.nats.tls.enabled }}
+          - mountPath: /client-certs/nats/
+            name: platform-api-v2-nats-client-tls
+          {{- end }}
+          - mountPath: /certs/
+            name: {{ .Values.internalPKI.rootCASecretName }}
+          {{- if .Values.datastores.redis.clientVerification }}
+          - mountPath: /client-certs/redis/
+            name: redis-client-tls
+          {{- end }}
+          {{- if and (.Values.datastores.redis.serverVerification) (.Values.datastores.redis.serverVerificationCustomCertChain) }}
+          - mountPath: /access-certs/redis/
+            name: redis-server-ca
+          {{- end }}
+          - name: dp-flask-secret-key
+            mountPath: /secrets/api-secret-key
+          - name: redis-password
+            mountPath: /secrets/redis-password
+          - name: platform-ums-api-token
+            mountPath: /secrets/ums-api-token
+          resources:
+            {{- toYaml .Values.restapi.resources | nindent 12 }}
+      {{ if .Values.podTLS.enabled }}
+        - name: tls-sidecar
+          image: {{ include "howso-platform.imagePath" (dict "root" $ "image" .Values.podTLS.image) | quote }}
+          imagePullPolicy: Always
+          command: ["nginx", "-g", "daemon off;"]
+          volumeMounts:
+            - name: platform-api-v2-server-tls
+              mountPath: /certs/
+            - name: tls-config-volume
+              mountPath: /etc/nginx/nginx.conf
+              subPath: nginx.conf
+            - name: nginx-cache-volume
+              mountPath: /var/cache/nginx
+          securityContext:
+          {{- toYaml .Values.podTLS.securityContext | nindent 12 }}
+      {{- end }}
+      {{- with .Values.restapi.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.restapi.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.restapi.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      automountServiceAccountToken: false
+      volumes:
+      - name: nginx-cache-volume
+        emptyDir:
+          medium: Memory
+      - name: temp-volume
+        emptyDir:
+          medium: Memory
+      - name: platform-ums-api-token
+        secret:
+          secretName: platform-api-v2-ums-api-token
+      - name: redis-password
+        secret:
+          secretName: {{if .Values.datastores.redis.existingSecret }}{{ .Values.datastores.redis.credentialsSecretName }}{{ else }}platform-redis-credentials{{ end }}
+      - name: dp-flask-secret-key
+        secret:
+          secretName: platform-api-v2-secret-key
+      {{- if .Values.podTLS.enabled }}
+      - name: platform-api-v2-server-tls
+        secret:
+          secretName: platform-api-v2-server-tls
+      {{- end }}
+      - name: tls-config-volume
+        configMap:
+          name: platform-api-v2-tls-sidecar-nginx-config
+      {{- if .Values.nats.tls.enabled }}
+      - name: platform-api-v2-nats-client-tls
+        secret:
+          defaultMode: 420
+          secretName: platform-api-v2-nats-client-tls
+      {{- end }}
+      - name: {{ .Values.internalPKI.rootCASecretName }}
+        secret:
+          defaultMode: 420
+          secretName: {{ .Values.internalPKI.rootCASecretName }}
+          items:
+            - key: ca.crt
+              path: platform-ca-publickey.crt
+      {{- if .Values.datastores.redis.clientVerification }}
+      - name: redis-client-tls
+        secret:
+          defaultMode: 420
+          secretName: {{ .Values.datastores.redis.clientCertSecretName }}
+      {{- end }}
+      {{- if and (.Values.datastores.redis.serverVerification) (.Values.datastores.redis.serverVerificationCustomCertChain) }}
+      - name: redis-server-ca
+        secret:
+          defaultMode: 420
+          secretName: {{ default .Values.internalPKI.rootCASecretName .Values.datastores.redis.serverCertChainSecretName }}
+          items:
+            - key: ca.crt
+              path: redis-server-ca.crt
+      {{- end }}

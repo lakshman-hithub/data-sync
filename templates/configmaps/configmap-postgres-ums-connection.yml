@@ -1,0 +1,13 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: platform-configmap-postgres-ums-connection
+data:
+  # UMS DB details
+  HOWSO_UMS_POSTGRES_NAME: "{{ .Values.datastores.postgres.ums.name }}" 
+  HOWSO_UMS_POSTGRES_USER: "{{ .Values.datastores.postgres.ums.user }}" 
+  HOWSO_UMS_POSTGRES_HOST: "{{ .Values.datastores.postgres.ums.host }}" 
+  HOWSO_UMS_POSTGRES_PORT: "{{ .Values.datastores.postgres.ums.port }}"
+  HOWSO_UMS_POSTGRES_SSLMODE: "{{ .Values.datastores.postgres.ums.sslmode}}"
+  HOWSO_UMS_POSTGRES_VERIFY_WITH_CUSTOM_CERTCHAIN: "{{ .Values.datastores.postgres.ums.serverVerificationCustomCertChain }}"
+  HOWSO_UMS_POSTGRES_CLIENT_VERIFICATION: "{{ .Values.datastores.postgres.ums.clientVerification }}"

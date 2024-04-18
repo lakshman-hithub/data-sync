@@ -1,0 +1,153 @@
+{{ if .Values.pypi.enabled }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "howso-platform.pypi.fullname" . }}
+  labels:
+    app.kubernetes.io/part-of: howso-platform
+    app.kubernetes.io/component: platform-pypi
+    {{- include "howso-platform.pypi.labels" . | nindent 4 }}
+spec:
+  replicas: {{ .Values.pypi.replicaCount }}
+  selector:
+    matchLabels:
+      {{- include "howso-platform.pypi.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      annotations:
+      {{- with .Values.pypi.podAnnotations }}
+        {{ toYaml . | nindent 8 }}
+      {{- end }}
+        checksum/restapi: {{ include (print $.Template.BasePath "/configmaps/configmap-restapi-connection.yml") . | sha256sum }} 
+        checksum/ums: {{ include (print $.Template.BasePath "/configmaps/configmap-ums-connection.yml") . | sha256sum }} 
+      labels:
+        app.kubernetes.io/part-of: howso-platform
+        app.kubernetes.io/component: platform-pypi
+        {{- include "howso-platform.pypi.selectorLabels" . | nindent 8 }}
+    spec:
+      serviceAccountName: platform-minimal-serviceaccount
+      serviceAccount: platform-minimal-serviceaccount
+      tolerations:
+        {{- toYaml .Values.tolerations.services | nindent 8 }}
+      {{- with .Values.images.pullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      securityContext:
+        {{- toYaml .Values.pypi.podSecurityContext | nindent 8 }}
+      containers:
+        - name: pypi-server
+          securityContext:
+            {{- toYaml .Values.pypi.securityContext | nindent 12 }}
+          image: {{ include "howso-platform.imagePath" (dict "root" $ "image" .Values.pypi.image) | quote }}
+          imagePullPolicy: {{ .Values.images.pullPolicy }} 
+          envFrom:
+          - configMapRef:
+              name: platform-configmap-restapi-connection
+          - configMapRef:
+              name: platform-configmap-ums-connection
+          env:
+          - name: TMPDIR
+            value: "/tmp/dp/"
+          {{ if .Values.pypi.security.enabled }}
+          - name: HOWSO_PYPI_SECURITY_ENABLED
+            value: "true"
+#          - name: HOWSO_PYPI_PW
+#            valueFrom:
+#              secretKeyRef:
+#                name: platform-pypi-api-token-secret
+#                key: pypi_token
+          {{ end }}
+          {{ if .Values.pypi.gunicornThreads }}
+          - name: HOWSO_GUNICORN_THREADS
+            value: {{ .Values.pypi.gunicornThreads | quote }}
+          {{ end }}
+          {{ if .Values.pypi.gunicornWorkers }}
+          - name: HOWSO_GUNICORN_WORKERS
+            value: {{ .Values.pypi.gunicornWorkers | quote }}
+          {{ end }}
+          {{ if .Values.pypi.timeouts.gunicorn}}
+          - name: HOWSO_GUNICORN_TIMEOUT
+            value: {{ .Values.pypi.timeouts.gunicorn | quote }}
+          {{ end }}
+          {{ if .Values.pypi.timeouts.gunicornGraceful}}
+          - name: HOWSO_GUNICORN_GRACEFUL_TIMEOUT
+            value: {{ .Values.pypi.timeouts.gunicornGraceful | quote }}
+          {{ end }}
+          {{ if .Values.pypi.timeouts.gunicornKeepalive}}
+          - name: HOWSO_GUNICORN_KEEPALIVE_TIMEOUT
+            value: {{ .Values.pypi.timeouts.gunicornKeepalive | quote }}
+          {{ end }}
+          - name: HOWSO_LOG_LEVEL
+            value: {{ if (.Values.pypi.logLevel) }}{{ .Values.pypi.logLevel | quote }}{{ else }}{{ .Values.logLevel | quote }}{{ end }}
+          - name: HOWSO_LOG_FORMAT
+            value: {{ if (.Values.pypi.logFormat) }}{{ .Values.pypi.logFormat | quote }}{{ else }}{{ .Values.logFormat | quote }}{{ end }}
+          ports:
+          {{ if .Values.podTLS.enabled }}
+            - name: https
+              containerPort: 8443
+              protocol: TCP
+          {{ else }}
+            - name: http
+              containerPort: 8080
+              protocol: TCP
+          {{ end }}
+          volumeMounts:
+          - name: platform-pypi-api-token-secret
+            mountPath: /secrets/platform-pypi-api-token-secret
+          {{ if .Values.podTLS.enabled }}
+          - name: platform-pypi-server-tls
+            mountPath: /certs
+            readOnly: true
+          {{ end }}
+          - name: temp-volume
+            mountPath: /tmp/dp
+          resources:
+            {{- toYaml .Values.pypi.resources | nindent 12 }}
+      {{ if .Values.podTLS.enabled }}
+        - name: tls-sidecar
+          image: {{ include "howso-platform.imagePath" (dict "root" $ "image" .Values.podTLS.image) | quote }}
+          imagePullPolicy: {{ .Values.images.pullPolicy | quote }}
+          command: ["nginx", "-g", "daemon off;"]
+          volumeMounts:
+            - name: platform-pypi-server-tls
+              mountPath: /certs/
+            - name: tls-config-volume
+              mountPath: /etc/nginx/nginx.conf
+              subPath: nginx.conf
+            - name: nginx-cache-volume
+              mountPath: /var/cache/nginx
+          securityContext:
+          {{- toYaml .Values.podTLS.securityContext | nindent 12 }}
+      {{- end }}
+      {{- with .Values.pypi.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.pypi.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.pypi.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      volumes:
+      - name: nginx-cache-volume
+        emptyDir:
+          medium: Memory
+      - name: platform-pypi-api-token-secret
+        secret:
+          secretName: platform-pypi-api-token-secret
+      {{- if .Values.podTLS.enabled }}
+      - name: platform-pypi-server-tls
+        secret:
+          secretName: platform-pypi-server-tls
+      - name: tls-config-volume
+        configMap:
+          name: platform-pypi-tls-sidecar-nginx-config
+      {{- end }}
+      - name: temp-volume
+        emptyDir: {}
+      automountServiceAccountToken: false
+{{- end }}

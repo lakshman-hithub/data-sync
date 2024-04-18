@@ -1,0 +1,15 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: platform-configmap-worker-env
+data:
+  # Since the worker is created dynamically - it is simpler to have these environment values in a configmap,
+  # and read directly - rather than pass it in via the operator, and configured from there.
+  HOWSO_LOG_LEVEL: {{ if (.Values.worker.logLevel) }}{{ .Values.worker.logLevel | quote }}{{ else }}{{ .Values.logLevel | quote }}{{ end }}
+  HOWSO_LOG_FORMAT: {{ if (.Values.worker.logFormat) }}{{ .Values.worker.logFormat | quote }}{{ else }}{{ .Values.logFormat | quote }}{{ end }}
+  NATS_JETSTREAM_ACK_TIMEOUT:  {{ .Values.worker.timeouts.natsJSAck | quote }}
+  NATS_JETSTREAM_REPLY_TIMEOUT: {{ .Values.worker.timeouts.natsJSReply | quote }}
+  NATS_REPLY_TIMEOUT: {{ .Values.worker.timeouts.natsReply | quote }}
+  NATS_CREATE_CONSUMER_TIMEOUT : {{ .Values.worker.timeouts.natsCreateConsumer | quote }}
+  AMLG_DEBUG: {{ .Values.worker.trace.enabled | quote }}
+  OBJECT_STORE_REWRITE_NETLOC: {{ .Values.presigned.subdomain }}.{{ .Values.domain }}

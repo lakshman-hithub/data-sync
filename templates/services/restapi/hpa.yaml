@@ -1,0 +1,29 @@
+{{- if .Values.restapi.autoscaling.enabled }}
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: {{ include "howso-platform.restapi.fullname" . }}
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: {{ include "howso-platform.restapi.fullname" . }}
+  minReplicas: {{ .Values.restapi.autoscaling.minReplicas }}
+  maxReplicas: {{ .Values.restapi.autoscaling.maxReplicas }}
+  metrics:
+  - type: Resource
+    resource:
+      name: cpu
+      target:
+        type: Utilization
+        averageUtilization: {{ .Values.restapi.autoscaling.targetCPUUtilizationPercentage }}
+  behavior:
+    scaleDown:
+      stabilizationWindowSeconds: {{ .Values.restapi.autoscaling.behavior.scaleDown.stabilizationWindowSeconds }}
+      policies:
+      {{- toYaml .Values.restapi.autoscaling.behavior.scaleDown.policies | nindent 12 }}
+    scaleUp:
+      stabilizationWindowSeconds: {{ .Values.restapi.autoscaling.behavior.scaleUp.stabilizationWindowSeconds }}
+      policies:
+      {{- toYaml .Values.restapi.autoscaling.behavior.scaleUp.policies | nindent 12 }}
+{{- end }}

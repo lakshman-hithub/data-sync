@@ -1,0 +1,550 @@
+{{ if .Values.ums.enabled }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: platform-ums
+  labels:
+    app.kubernetes.io/part-of: howso-platform
+    app.kubernetes.io/component: user-management-service
+    {{- include "howso-platform.ums.labels" . | nindent 4 }}
+spec:
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+  minReadySeconds: 10
+  selector:
+    matchLabels:
+      {{- include "howso-platform.ums.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      annotations:
+      {{- with .Values.ums.podAnnotations }}
+        {{ toYaml . | nindent 8 }}
+      {{- end }}
+        checksum/nats: {{ include (print $.Template.BasePath "/configmaps/configmap-nats-connection.yml") . | sha256sum }}
+        checksum/restapi: {{ include (print $.Template.BasePath "/configmaps/configmap-restapi-connection.yml") . | sha256sum }}
+        checksum/redis: {{ include (print $.Template.BasePath "/configmaps/configmap-redis-connection.yml") . | sha256sum }}
+        checksum/pgums: {{ include (print $.Template.BasePath "/configmaps/configmap-postgres-ums-connection.yml") . | sha256sum }}
+        checksum/ui2: {{ include (print $.Template.BasePath "/configmaps/configmap-ui2-connection.yml") . | sha256sum }}
+        checksum/apitoken: {{ include (print $.Template.BasePath "/services/restapi/restapi-ums-api-token.yaml") . | sha256sum }}
+        checksum/smstoken: {{ include (print $.Template.BasePath "/services/sms/sms-system-account-secret.yaml") . | sha256sum }}
+        checksum/umstoken: {{ include (print $.Template.BasePath "/services/ums/ums-system-account-secret.yaml") . | sha256sum }}
+        checksum/docauthtoken: {{ include (print $.Template.BasePath "/services/docs/docs-application-secret.yaml") . | sha256sum }}
+        checksum/uitoken: {{ include (print $.Template.BasePath "/services/ums/ui-application-secret.yaml") . | sha256sum }}
+        checksum/obj: {{ include (print $.Template.BasePath "/configmaps/configmap-object-store-connection.yml") . | sha256sum }}
+      labels:
+        app.kubernetes.io/part-of: howso-platform
+        app.kubernetes.io/component: user-management-service
+        {{- include "howso-platform.ums.selectorLabels" . | nindent 8 }}
+    spec:
+      tolerations:
+        {{- toYaml .Values.tolerations.services | nindent 8 }}
+      {{- with .Values.images.pullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      serviceAccountName: platform-minimal-serviceaccount
+      securityContext:
+        {{- toYaml .Values.ums.podSecurityContext | nindent 8 }}
+      containers:
+        - name: ums
+          securityContext:
+            {{- toYaml .Values.ums.securityContext | nindent 12 }}
+          image: {{ include "howso-platform.imagePath" (dict "root" $ "image" .Values.ums.image) | quote }}
+          command: ["/container_files/bin/service_entrypoint.sh"]
+          args: ['/container_files/bin/start_ums.sh']
+          imagePullPolicy: {{ .Values.images.pullPolicy }}
+          volumeMounts:
+          - mountPath: /system-accounts/ns
+            name: platform-notification-service-system-account-secret
+          - mountPath: /system-accounts/ums
+            name: platform-ums-system-account-secret
+          - mountPath: /system-accounts/sms
+            name: platform-sms-system-account-secret
+          - mountPath: /system-applications/ui
+            name: platform-ui-application-secret
+          - name: redis-password
+            mountPath: /secrets/redis-password
+          - name: shared-pod-keys
+            mountPath: /app/keys
+          {{- if .Values.saml.enabled }}
+          - name: saml-keys
+            mountPath: "/keys/saml"
+            readOnly: true
+          {{- end }}
+          - name: oauth-keys
+            mountPath: "/keys/oauth"
+            readOnly: true
+          - mountPath: /certs/
+            name: {{ .Values.internalPKI.rootCASecretName }}
+          {{- if .Values.nats.tls.enabled }}
+          - mountPath: /client-certs/nats/
+            name: platform-ums-nats-client-tls
+          {{- end }}
+          {{- if .Values.datastores.postgres.ums.clientVerification }}
+          - mountPath: /client-certs/postgres/
+            name: postgres-client-tls
+          {{- end }}
+          {{- if .Values.datastores.postgres.ums.serverVerificationCustomCertChain }}
+          - mountPath: /access-certs/postgres
+            name: postgres--server-ca
+          {{- end }}
+          {{- if .Values.datastores.redis.clientVerification }}
+          - mountPath: /client-certs/redis/
+            name: redis-client-tls
+          {{- end }}
+          {{- if and (.Values.datastores.redis.serverVerification) (.Values.datastores.redis.serverVerificationCustomCertChain) }}
+          - mountPath: /access-certs/redis/
+            name: redis-server-ca
+          {{- end }}
+          {{- if and (.Values.datastores.objectStore.serverVerification) (.Values.datastores.objectStore.serverVerificationCustomCertChain) }}
+          - mountPath: /access-certs/objstore/
+            name: object-store-crtchain
+          {{- end }}
+          envFrom:
+          - configMapRef:
+              name: platform-configmap
+          - configMapRef:
+              name: platform-configmap-ums-connection
+          - configMapRef:
+              name: platform-configmap-ui2-connection
+          - configMapRef:
+              name: platform-configmap-redis-connection
+          - configMapRef:
+              name: platform-configmap-postgres-ums-connection
+          - configMapRef:
+              name: platform-configmap-nats-connection
+          - configMapRef:
+              name: platform-configmap-restapi-connection
+          - configMapRef:
+              name: platform-configmap-object-store-connection
+          - configMapRef:
+              name: platform-configmap-pypi-connection
+          env:
+          - name: HOWSO_PARENT_DOMAIN
+            value: {{ .Values.domain }}
+          - name: HOWSO_UMS_HOST
+            value: {{ .Values.ums.subdomain }}.{{ .Values.domain }}
+          - name: FLUSH_AUTH_CACHE_ON_STARTUP
+            value: 'true'
+          - name: DJANGO_COLORS
+            value: 'nocolor'
+          - name: HOWSO_UMS_POSTGRES_PASSWORD
+            valueFrom:
+              secretKeyRef:
+                name: {{if .Values.datastores.postgres.ums.existingSecret }}{{ .Values.datastores.postgres.ums.credentialsSecretName }}{{ else }}platform-postgres-ums-credentials{{ end }}
+                key: {{if .Values.datastores.postgres.ums.existingSecret }}{{ .Values.datastores.postgres.ums.passwordDataKey }}{{ else }}password{{ end }}
+          - name: HOWSO_UMS_SECRET_KEY
+            valueFrom:
+              secretKeyRef:
+                name: platform-ums-django-secret
+                key: secret
+          - name: HOWSO_INTERNAL_SECRETS_BACKEND_KEY
+            valueFrom:
+              secretKeyRef:
+                name: platform-ums-encrypted-data-secret
+                key: secretkey
+          - name: HOWSO_OBJECT_STORE_ACCESS_KEY
+            valueFrom:
+              secretKeyRef:
+                name: {{if .Values.datastores.objectStore.existingSecret }}{{ .Values.datastores.objectStore.credentialsSecretName }}{{ else }}platform-object-store-credentials{{ end }}
+                key: {{ .Values.datastores.objectStore.accesskeyDataKey }}
+          - name: HOWSO_OBJECT_STORE_SECRET_KEY
+            valueFrom:
+              secretKeyRef:
+                name: {{if .Values.datastores.objectStore.existingSecret }}{{ .Values.datastores.objectStore.credentialsSecretName }}{{ else }}platform-object-store-credentials{{ end }}
+                key: {{ .Values.datastores.objectStore.secretkeyDataKey }}
+          - name: HOWSO_REDIS_CLIENT_CERT_LOC
+            value: '/app/keys/client-certs/redis/tls.crt'
+          - name: HOWSO_REDIS_CLIENT_KEY_LOC
+            value: '/app/keys/client-certs/redis/tls.key'
+          - name: HOWSO_RESTAPI_UMS_API_TOKEN
+            valueFrom:
+              secretKeyRef:
+                name: platform-api-v2-ums-api-token
+                key: token
+          - name: HOWSO_LOG_LEVEL
+            value: {{ if (.Values.ums.logLevel) }}{{ .Values.ums.logLevel | quote }}{{ else }}{{ .Values.logLevel | quote }}{{ end }}
+          - name: HOWSO_LOG_FORMAT
+            value: {{ if (.Values.ums.logFormat) }}{{ .Values.ums.logFormat | quote }}{{ else }}{{ .Values.logFormat | quote }}{{ end }}
+          {{ if .Values.ums.cors.allowedOrigins }}
+          - name: HOWSO_CORS_ALLOWED_ORIGINS
+            value: {{ .Values.ums.cors.allowedOrigins | quote }}
+          {{ end }}
+          {{ if .Values.saml.enabled }}
+          - name: SAML_ENABLED
+            value: {{ .Values.saml.enabled | quote }}
+          - name: SAML_ALLOW_UNSOLICITED
+            value: {{ .Values.saml.allowUnsolicited | quote }}
+          - name: SAML_IDP_METADATA_URL
+            value: {{ .Values.saml.idPMetadataURL | quote }}
+          {{ end }}
+          {{ if .Values.oidc.enabled }}
+          - name: OIDC_ENABLED
+            value: {{ .Values.oidc.enabled | quote }}
+          - name: OIDC_RP_CLIENT_ID
+            value: {{ .Values.oidc.clientID | quote }}
+          - name: OIDC_RP_CLIENT_SECRET
+            value: {{ .Values.oidc.clientSecret | quote }}
+          - name: OIDC_RP_SIGN_ALGO
+            value: {{ .Values.oidc.algorithm | quote }}
+          - name: OIDC_OP_JWKS_ENDPOINT
+            value: {{ .Values.oidc.jwksEndpoint | quote }}
+          - name: OIDC_OP_AUTHORIZATION_ENDPOINT
+            value: {{ .Values.oidc.authorizeEndpoint | quote }}
+          - name: OIDC_OP_TOKEN_ENDPOINT
+            value: {{ .Values.oidc.tokenEndpoint | quote }}
+          - name: OIDC_OP_USER_ENDPOINT
+            value: {{ .Values.oidc.userinfoEndpoint | quote }}
+          - name: OIDC_RP_SCOPES
+            value: {{ .Values.oidc.scopes | quote }}
+          {{ end }}
+          {{ if .Values.pypi.security.enabled }}
+          - name: HOWSO_PYPI_SECURITY_ENABLED
+            value: "true"
+          - name: HOWSO_HOWSO_PYPI_PW
+            valueFrom:
+              secretKeyRef:
+                name: platform-pypi-api-token-secret
+                key: pypi_token
+          {{ end }}
+          {{ if .Values.ums.gunicornThreads }}
+          - name: HOWSO_GUNICORN_THREADS
+            value: {{ .Values.ums.gunicornThreads | quote }}
+          {{ end }}
+          {{ if .Values.ums.gunicornWorkers }}
+          - name: HOWSO_GUNICORN_WORKERS
+            value: {{ .Values.ums.gunicornWorkers | quote }}
+          {{ end }}
+          {{ if .Values.ums.timeouts.gunicorn}}
+          - name: HOWSO_GUNICORN_TIMEOUT
+            value: {{ .Values.ums.timeouts.gunicorn | quote }}
+          {{ end }}
+          {{ if .Values.ums.timeouts.gunicornGraceful}}
+          - name: HOWSO_GUNICORN_GRACEFUL_TIMEOUT
+            value: {{ .Values.ums.timeouts.gunicornGraceful | quote }}
+          {{ end }}
+          {{ if .Values.ums.timeouts.gunicornKeepalive}}
+          - name: HOWSO_GUNICORN_KEEPALIVE_TIMEOUT
+            value: {{ .Values.ums.timeouts.gunicornKeepalive | quote }}
+          {{ end }}
+          - name: DJANGO_SU_NAME
+            value: {{ .Values.umsAdminUser }}
+          - name: DJANGO_SU_EMAIL
+            value: {{ .Values.umsAdminEmail }}
+          - name: DJANGO_SU_INITIAL_PASSWORD
+            value: {{ .Values.umsInitialAdminPw }}
+          ports:
+          {{ if .Values.podTLS.enabled }}
+            - name: https
+              containerPort: 8443
+              protocol: TCP
+          {{ else }}
+            - name: http
+              containerPort: 8000
+              protocol: TCP
+          {{ end }}
+          livenessProbe:
+            exec:
+              command:
+              - /container_files/bin/healthcheck.sh
+            failureThreshold: 4
+            periodSeconds: 30
+            initialDelaySeconds: 5
+            timeoutSeconds: 5
+          startupProbe:
+            exec:
+              command:
+              - /container_files/bin/startup_check.sh
+            failureThreshold: 4
+            periodSeconds: 10
+            initialDelaySeconds: 10
+            timeoutSeconds: 5
+          resources:
+            {{- toYaml .Values.ums.resources | nindent 12 }}
+        - name: ums-nats
+          securityContext:
+            {{- toYaml .Values.ums.securityContext | nindent 12 }}
+          image: {{ include "howso-platform.imagePath" (dict "root" $ "image" .Values.ums.image) | quote }}
+          command: ["/container_files/bin/nats_service_entrypoint.sh"]
+          args: ['/container_files/bin/start_nats.sh']
+          imagePullPolicy: {{ .Values.images.pullPolicy }}
+          volumeMounts:
+          - name: redis-password
+            mountPath: /secrets/redis-password
+          - name: shared-pod-keys
+            mountPath: /app/keys
+          {{- if .Values.saml.enabled }}
+          - name: saml-keys
+            mountPath: "/keys/saml"
+            readOnly: true
+          {{- end }}
+          - name: oauth-keys
+            mountPath: "/keys/oauth"
+            readOnly: true
+          - mountPath: /certs/
+            name: {{ .Values.internalPKI.rootCASecretName }}
+          {{- if .Values.nats.tls.enabled }}
+          - mountPath: /client-certs/nats/
+            name: platform-ums-nats-client-tls
+          {{- end }}
+          {{- if .Values.datastores.postgres.ums.clientVerification }}
+          - mountPath: /client-certs/postgres/
+            name: postgres-client-tls
+          {{- end }}
+          {{- if .Values.datastores.postgres.ums.serverVerificationCustomCertChain }}
+          - mountPath: /access-certs/postgres
+            name: postgres--server-ca
+          {{- end }}
+          {{- if .Values.datastores.redis.clientVerification }}
+          - mountPath: /client-certs/redis/
+            name: redis-client-tls
+          {{- end }}
+          {{- if and (.Values.datastores.redis.serverVerification) (.Values.datastores.redis.serverVerificationCustomCertChain) }}
+          - mountPath: /access-certs/redis/
+            name: redis-server-ca
+          {{- end }}
+          {{- if and (.Values.datastores.objectStore.serverVerification) (.Values.datastores.objectStore.serverVerificationCustomCertChain) }}
+          - mountPath: /access-certs/objstore/
+            name: object-store-crtchain
+          {{- end }}
+          envFrom:
+          - configMapRef:
+              name: platform-configmap
+          - configMapRef:
+              name: platform-configmap-ums-connection
+          - configMapRef:
+              name: platform-configmap-ui2-connection
+          - configMapRef:
+              name: platform-configmap-redis-connection
+          - configMapRef:
+              name: platform-configmap-postgres-ums-connection
+          - configMapRef:
+              name: platform-configmap-nats-connection
+          - configMapRef:
+              name: platform-configmap-restapi-connection
+          - configMapRef:
+              name: platform-configmap-object-store-connection
+          - configMapRef:
+              name: platform-configmap-pypi-connection
+          env:
+          - name: DJANGO_COLORS
+            value: 'nocolor'
+          - name: HOWSO_PARENT_DOMAIN
+            value: {{ .Values.domain }}
+          - name: HOWSO_UMS_HOST
+            value: {{ .Values.ums.subdomain }}.{{ .Values.domain }}
+          - name: HOWSO_UMS_POSTGRES_PASSWORD
+            valueFrom:
+              secretKeyRef:
+                name: {{if .Values.datastores.postgres.ums.existingSecret }}{{ .Values.datastores.postgres.ums.credentialsSecretName }}{{ else }}platform-postgres-ums-credentials{{ end }}
+                key: {{if .Values.datastores.postgres.ums.existingSecret }}{{ .Values.datastores.postgres.ums.passwordDataKey }}{{ else }}password{{ end }}
+          - name: HOWSO_UMS_SECRET_KEY
+            valueFrom:
+              secretKeyRef:
+                name: platform-ums-django-secret
+                key: secret
+          - name: HOWSO_INTERNAL_SECRETS_BACKEND_KEY
+            valueFrom:
+              secretKeyRef:
+                name: platform-ums-encrypted-data-secret
+                key: secretkey
+          - name: HOWSO_OBJECT_STORE_ACCESS_KEY
+            valueFrom:
+              secretKeyRef:
+                name: {{if .Values.datastores.objectStore.existingSecret }}{{ .Values.datastores.objectStore.credentialsSecretName }}{{ else }}platform-object-store-credentials{{ end }}
+                key: {{ .Values.datastores.objectStore.accesskeyDataKey }}
+          - name: HOWSO_OBJECT_STORE_SECRET_KEY
+            valueFrom:
+              secretKeyRef:
+                name: {{if .Values.datastores.objectStore.existingSecret }}{{ .Values.datastores.objectStore.credentialsSecretName }}{{ else }}platform-object-store-credentials{{ end }}
+                key: {{ .Values.datastores.objectStore.secretkeyDataKey }}
+          - name: HOWSO_REDIS_CLIENT_CERT_LOC
+            value: '/app/keys/client-certs/redis/tls.crt'
+          - name: HOWSO_REDIS_CLIENT_KEY_LOC
+            value: '/app/keys/client-certs/redis/tls.key'
+          - name: HOWSO_RESTAPI_UMS_API_TOKEN
+            valueFrom:
+              secretKeyRef:
+                name: platform-api-v2-ums-api-token
+                key: token
+          - name: HOWSO_LOG_LEVEL
+            value: {{ if (.Values.ums.logLevel) }}{{ .Values.ums.logLevel | quote }}{{ else }}{{ .Values.logLevel | quote }}{{ end }}
+          - name: HOWSO_LOG_FORMAT
+            value: {{ if (.Values.ums.logFormat) }}{{ .Values.ums.logFormat | quote }}{{ else }}{{ .Values.logFormat | quote }}{{ end }}
+          {{ if .Values.saml.enabled }}
+          - name: SAML_ENABLED
+            value: {{ .Values.saml.enabled | quote }}
+          - name: SAML_ALLOW_UNSOLICITED
+            value: {{ .Values.saml.allowUnsolicited | quote }}
+          - name: SAML_IDP_METADATA_URL
+            value: {{ .Values.saml.idPMetadataURL | quote }}
+          {{ end }}
+          {{ if .Values.oidc.enabled }}
+          - name: OIDC_ENABLED
+            value: {{ .Values.oidc.enabled | quote }}
+          - name: OIDC_RP_CLIENT_ID
+            value: {{ .Values.oidc.clientID | quote }}
+          - name: OIDC_RP_CLIENT_SECRET
+            value: {{ .Values.oidc.clientSecret | quote }}
+          - name: OIDC_RP_SIGN_ALGO
+            value: {{ .Values.oidc.algorithm | quote }}
+          - name: OIDC_OP_JWKS_ENDPOINT
+            value: {{ .Values.oidc.jwksEndpoint | quote }}
+          - name: OIDC_OP_AUTHORIZATION_ENDPOINT
+            value: {{ .Values.oidc.authorizeEndpoint | quote }}
+          - name: OIDC_OP_TOKEN_ENDPOINT
+            value: {{ .Values.oidc.tokenEndpoint | quote }}
+          - name: OIDC_OP_USER_ENDPOINT
+            value: {{ .Values.oidc.userinfoEndpoint | quote }}
+          - name: OIDC_RP_SCOPES
+            value: {{ .Values.oidc.scopes | quote }}
+          {{ end }}
+          livenessProbe:
+            exec:
+              command:
+              - /container_files/bin/nats_healthcheck.sh
+            failureThreshold: 4
+            periodSeconds: 30
+            initialDelaySeconds: 5
+          startupProbe:
+            exec:
+              command:
+              - /container_files/bin/startup_check.sh
+            failureThreshold: 4
+            periodSeconds: 10
+            initialDelaySeconds: 10
+          resources:
+            {{- toYaml .Values.ums.resources | nindent 12 }}
+      {{ if .Values.podTLS.enabled }}
+        - name: tls-sidecar
+          image: {{ include "howso-platform.imagePath" (dict "root" $ "image" .Values.podTLS.image) | quote }}
+          imagePullPolicy: Always
+          command: ["nginx", "-g", "daemon off;"]
+          volumeMounts:
+            - name: platform-ums-server-tls
+              mountPath: /certs
+            - name: tls-config-volume
+              mountPath: /etc/nginx/nginx.conf
+              subPath: nginx.conf
+            - name: nginx-cache-volume
+              mountPath: /var/cache/nginx
+          securityContext:
+          {{- toYaml .Values.podTLS.securityContext | nindent 12 }}
+      {{ end }}
+      volumes:
+      - name: redis-password
+        secret:
+          secretName: {{if .Values.datastores.redis.existingSecret }}{{ .Values.datastores.redis.credentialsSecretName }}{{ else }}platform-redis-credentials{{ end }}
+      - name: nginx-cache-volume
+        emptyDir:
+          medium: Memory
+      - name: shared-pod-keys
+        emptyDir:
+          medium: Memory
+          sizeLimit: 1Mi
+      {{- if .Values.podTLS.enabled }}
+      - name: platform-ums-server-tls
+        secret:
+          secretName: platform-ums-server-tls
+      - name: tls-config-volume
+        configMap:
+          name: platform-ums-tls-sidecar-nginx-config
+      {{- end }}
+      - name: oauth-keys
+        secret:
+          secretName: platform-ums-oauth-keys
+      {{ if .Values.saml.enabled }}
+      - name: saml-keys
+        secret:
+          secretName: platform-ums-saml-keys
+      {{ end }}
+      - name: {{ .Values.internalPKI.rootCASecretName }}
+        secret:
+          defaultMode: 420
+          secretName: {{ .Values.internalPKI.rootCASecretName }}
+          items:
+            - key: ca.crt
+              path: platform-ca-publickey.crt
+      {{- if .Values.nats.tls.enabled }}
+      - name: platform-ums-nats-client-tls
+        secret:
+          defaultMode: 420
+          secretName: platform-ums-nats-client-tls
+      {{- end }}
+      {{- if .Values.datastores.postgres.ums.clientVerification }}
+      - name: postgres-client-tls
+        secret:
+          defaultMode: 420
+          secretName: {{ .Values.datastores.postgres.ums.clientCertSecretName }}
+      {{- end }}
+      {{- if .Values.datastores.postgres.ums.serverVerificationCustomCertChain }}
+      - name: postgres--server-ca
+        secret:
+          defaultMode: 420
+          secretName: {{ default .Values.internalPKI.rootCASecretName .Values.datastores.postgres.ums.serverCertChainSecretName }}
+          items:
+            - key: ca.crt
+              path: postgres-server-certchain.crt
+      {{- end }}
+      {{- if .Values.datastores.redis.clientVerification }}
+      - name: redis-client-tls
+        secret:
+          defaultMode: 420
+          secretName: {{ .Values.datastores.redis.clientCertSecretName }}
+      {{- end }}
+      {{- if and (.Values.datastores.redis.serverVerification) (.Values.datastores.redis.serverVerificationCustomCertChain) }}
+      - name: redis-server-ca
+        secret:
+          defaultMode: 420
+          secretName: {{ default .Values.internalPKI.rootCASecretName .Values.datastores.redis.serverCertChainSecretName }}
+          items:
+            - key: ca.crt
+              path: redis-server-ca.crt
+      {{- end }}
+      {{- if and (.Values.datastores.objectStore.serverVerification) (.Values.datastores.objectStore.serverVerificationCustomCertChain) }}
+      - name: object-store-crtchain
+        secret:
+          defaultMode: 420
+          secretName: {{ default .Values.internalPKI.rootCASecretName .Values.datastores.objectStore.serverCertChainSecretName }}
+          items:
+            - key: ca.crt
+              path: object-store-certchain.crt
+      {{- end }}
+      # For kubernetes access
+      - name: platform-notification-service-system-account-secret
+        secret:
+          defaultMode: 420
+          secretName: platform-notification-service-system-account-secret
+      - name: platform-ums-system-account-secret
+        secret:
+          defaultMode: 420
+          secretName: platform-ums-system-account-secret
+      - name: platform-sms-system-account-secret
+        secret:
+          defaultMode: 420
+          secretName: platform-sms-system-account-secret
+      - name: platform-ui-application-secret
+        secret:
+          defaultMode: 420
+          secretName: platform-ui-application-secret
+      - name: platform-docs-application-secret
+        secret:
+          defaultMode: 420
+          secretName: platform-docs-application-secret
+      {{- with .Values.ums.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.ums.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.ums.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      automountServiceAccountToken: false
+{{ end }}

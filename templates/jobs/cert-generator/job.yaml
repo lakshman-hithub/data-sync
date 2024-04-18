@@ -1,0 +1,65 @@
+{{- if .Values.jobs.certGenerator.enabled }}
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: platform-cert-generation-initial
+  labels:
+    app.kubernetes.io/part-of: howso-platform
+    app.kubernetes.io/component: cert-generator
+  {{- if .Values.jobs.certGenerator.podAnnotations }}
+  annotations: {{ toYaml .Values.jobs.certGenerator.podAnnotations | nindent 4 }}
+  {{- end }}
+spec:
+  backoffLimit: {{ .Values.jobs.certGenerator.backoffLimit }}
+  activeDeadlineSeconds: {{ .Values.jobs.certGenerator.activeDeadlineSeconds }}
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/part-of: howso-platform
+        app.kubernetes.io/component: cert-generator
+      {{- if .Values.jobs.certGenerator.podAnnotations }}
+      annotations: {{ toYaml .Values.jobs.certGenerator.podAnnotations | nindent 8 }}
+      {{- end }}
+    spec:
+      {{- with .Values.images.pullSecrets }}
+      imagePullSecrets:
+          {{- toYaml . | nindent 10 }}
+      {{- end }}
+      serviceAccountName: platform-cert-generator-sa
+      securityContext:
+        {{- toYaml .Values.jobs.certGenerator.podSecurityContext | nindent 8 }}
+      containers:
+      - name: certificate-generator
+        securityContext:
+          {{- toYaml .Values.jobs.certGenerator.securityContext | nindent 10 }} 
+        image: {{ include "howso-platform.imagePath" (dict "root" $ "image" .Values.jobs.certGenerator.image) | quote }}
+        imagePullPolicy: {{ .Values.images.pullPolicy }}
+        volumeMounts:
+        - name: temp-volume
+          mountPath: "/tmp/howso/"
+        resources:
+          {{- toYaml .Values.jobs.certGenerator.resources | nindent 10 }}
+        envFrom:
+        - configMapRef:
+            name: platform-configmap
+        env:
+        - name: TMPDIR
+          value: "/tmp/howso/"
+        - name: HOWSO_CERTGEN_CERT_DURATION
+          value: {{ .Values.jobs.certGenerator.newCertDuration }}
+        - name: HOWSO_CERTGEN_CERT_EXPIRY_THRESHOLD
+          value: {{ .Values.jobs.certGenerator.expiryThreshold }}
+        - name: HOWSO_LOG_LEVEL
+          value: {{ if (.Values.jobs.certGenerator.logLevel) }}{{ .Values.jobs.certGenerator.logLevel | quote }}{{ else }}{{ .Values.logLevel | quote }}{{ end }}
+        - name: ROOT_CA_NAME
+          value: {{ .Values.internalPKI.rootCASecretName }}
+        - name: SAML_ENABLED
+          value: {{ .Values.saml.enabled | quote }}
+        - name: NAMESPACE
+          value: {{ .Release.Namespace }}
+      restartPolicy: OnFailure
+      volumes:
+      - name: temp-volume
+        emptyDir:
+          medium: Memory
+{{- end }}

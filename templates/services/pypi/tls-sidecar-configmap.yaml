@@ -1,0 +1,8 @@
+{{ if .Values.pypi.enabled }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: platform-pypi-tls-sidecar-nginx-config
+data:
+  nginx.conf: {{ .Files.Get "files/pypi.tls.nginx.conf" | indent 4 | quote }}
+{{- end }}

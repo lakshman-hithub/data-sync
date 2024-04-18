@@ -1,0 +1,29 @@
+{{- if .Values.ums.autoscaling.enabled }}
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: {{ include "howso-platform.ums.fullname" . }}
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: {{ include "howso-platform.ums.fullname" . }}
+  minReplicas: {{ .Values.ums.autoscaling.minReplicas }}
+  maxReplicas: {{ .Values.ums.autoscaling.maxReplicas }}
+  metrics:
+  - type: Resource
+    resource:
+      name: cpu
+      target:
+        type: Utilization
+        averageUtilization: {{ .Values.ums.autoscaling.targetCPUUtilizationPercentage }}
+  behavior:
+    scaleDown:
+      stabilizationWindowSeconds: {{ .Values.ums.autoscaling.behavior.scaleDown.stabilizationWindowSeconds }}
+      policies:
+      {{- toYaml .Values.ums.autoscaling.behavior.scaleDown.policies | nindent 12 }}
+    scaleUp:
+      stabilizationWindowSeconds: {{ .Values.ums.autoscaling.behavior.scaleUp.stabilizationWindowSeconds }}
+      policies:
+      {{- toYaml .Values.ums.autoscaling.behavior.scaleUp.policies | nindent 12 }}
+{{- end }}

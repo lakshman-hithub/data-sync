@@ -1,0 +1,28 @@
+{{- if .Values.podTLS.enabled }}
+{{ if .Values.ui2.enabled }}
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: platform-ui-v2-server-tls
+spec:
+  secretName: platform-ui-v2-server-tls
+  duration: 2160h # 90d
+  renewBefore: 360h # 15d
+  subject:
+    organizations:
+    - Howso Platform
+  commonName: platform-ui-v2.default.svc.cluster.local
+  isCA: false
+  privateKey:
+    algorithm: RSA
+    encoding: PKCS1
+    size: 4096
+  usages:
+    - server auth
+  dnsNames:
+  - platform-ui-v2
+  issuerRef:
+    name: {{ .Values.internalPKI.rootCASecretName }}
+    kind: Issuer
+{{ end }}
+{{ end }}

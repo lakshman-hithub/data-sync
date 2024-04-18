@@ -1,0 +1,8 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: platform-configmap-ui2-connection
+data:
+  HOWSO_UI_V2_ORIGIN: https://{{ .Values.ui2.subdomain }}.{{ .Values.domain }}
+  HOWSO_UI_V2_HOST: {{ .Values.ui2.subdomain }}.{{ .Values.domain }}
+  HOWSO_INTERNAL_TLS: {{ if .Values.podTLS.enabled }}"true"{{ else }}"false"{{ end }}

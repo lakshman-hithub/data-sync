@@ -1,0 +1,13 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: platform-configmap-postgres-platform-connection
+data:
+  # Platform DB details
+  HOWSO_PLATFORM_POSTGRES_NAME: "{{ .Values.datastores.postgres.platform.name }}" 
+  HOWSO_PLATFORM_POSTGRES_USER: "{{ .Values.datastores.postgres.platform.user }}" 
+  HOWSO_PLATFORM_POSTGRES_HOST: "{{ .Values.datastores.postgres.platform.host }}"
+  HOWSO_PLATFORM_POSTGRES_PORT: "{{ .Values.datastores.postgres.platform.port }}"
+  HOWSO_PLATFORM_POSTGRES_SSLMODE: "{{ .Values.datastores.postgres.platform.sslmode}}"
+  HOWSO_PLATFORM_POSTGRES_VERIFY_WITH_CUSTOM_CERTCHAIN: "{{ .Values.datastores.postgres.platform.serverVerificationCustomCertChain }}"
+  HOWSO_PLATFORM_POSTGRES_CLIENT_VERIFICATION: "{{ .Values.datastores.postgres.platform.clientVerification }}"

@@ -1,0 +1,9 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: platform-configmap-pypi-connection
+data:
+  HOWSO_PYPI_INTERNAL_URL: {{ if .Values.podTLS.enabled }}https://platform-pypi:8443{{ else }}http://platform-pypi:8080{{ end }}
+  HOWSO_PYPI_URL: https://{{ .Values.pypi.subdomain }}.{{ .Values.domain }}
+  HOWSO_PYPI_INDEX_URL: {{ .Values.pypi.subdomain }}.{{ .Values.domain }}/simple/
+  HOWSO_PYPI_HOST: {{ .Values.pypi.subdomain }}.{{ .Values.domain }}

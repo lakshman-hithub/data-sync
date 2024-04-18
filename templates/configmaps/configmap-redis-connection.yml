@@ -1,0 +1,19 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: platform-configmap-redis-connection
+data:
+  # Redis connection details
+  HOWSO_REDIS_HOST: "{{ .Values.datastores.redis.host }}"
+  HOWSO_REDIS_PORT: "{{ .Values.datastores.redis.port }}"
+  HOWSO_REDIS_CREDENTIALS_SECRETNAME: {{if .Values.datastores.redis.existingSecret }}{{ .Values.datastores.redis.credentialsSecretName }}{{ else }}platform-redis-credentials{{ end }}
+  HOWSO_REDIS_CREDENTIALS_PASSWORD_DATAKEY: {{ .Values.datastores.redis.passwordDataKey }}
+  HOWSO_REDIS_SERVER_VERIFICATION: "{{ .Values.datastores.redis.serverVerification }}"
+  HOWSO_REDIS_CHECK_HOSTNAME: "{{ .Values.datastores.redis.checkHostname }}"
+  HOWSO_REDIS_VERIFY_MODE: "{{ .Values.datastores.redis.verifyMode}}"
+  HOWSO_REDIS_CERT_CHAIN_SECRETNAME: "{{ default .Values.internalPKI.rootCASecretName .Values.datastores.redis.serverCertChainSecretName }}"
+  HOWSO_REDIS_VERIFY_WITH_CUSTOM_CERTCHAIN: "{{ .Values.datastores.redis.serverVerificationCustomCertChain }}"
+  HOWSO_REDIS_CLIENT_VERIFICATION: "{{ .Values.datastores.redis.clientVerification }}"
+  HOWSO_REDIS_CLIENT_CERT_SECRETNAME: "{{ .Values.datastores.redis.clientCertSecretName }}"
+  HOWSO_REDIS_PW_PATH: "/secrets/redis-password/{{ .Values.datastores.redis.passwordDataKey }}"
+  HOWSO_REDIS_SERVER_CERTCHAIN_LOC: "/access-certs/redis/redis-server-ca.crt"

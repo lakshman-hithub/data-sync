@@ -1,0 +1,183 @@
+{{ if .Values.docs.enabled }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "howso-platform.docs.fullname" . }}
+  labels:
+    app.kubernetes.io/part-of: howso-platform
+    app.kubernetes.io/component: platform-docs
+    {{- include "howso-platform.docs.labels" . | nindent 4 }}
+spec:
+  replicas: {{ .Values.docs.replicaCount }}
+  selector:
+    matchLabels:
+      {{- include "howso-platform.docs.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      annotations:
+      {{- with .Values.docs.podAnnotations }}
+        {{ toYaml . | nindent 8 }}
+      {{- end }}
+        checksum/path: {{ include (print $.Template.BasePath "/configmaps/configmap-ui2-connection.yml") . | sha256sum }}
+        checksum/docauthtoken: {{ include (print $.Template.BasePath "/services/docs/docs-application-secret.yaml") . | sha256sum }}
+      labels:
+        app.kubernetes.io/part-of: howso-platform
+        app.kubernetes.io/component: platform-docs
+        {{- include "howso-platform.docs.selectorLabels" . | nindent 8 }}
+    spec:
+      serviceAccountName: platform-minimal-serviceaccount
+      serviceAccount: platform-minimal-serviceaccount
+      tolerations:
+        {{- toYaml .Values.tolerations.services | nindent 8 }}
+      {{- with .Values.images.pullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      securityContext:
+        {{- toYaml .Values.docs.podSecurityContext | nindent 8 }}
+      containers:
+        - name: docs
+          securityContext:
+            {{- toYaml .Values.docs.securityContext | nindent 12 }}
+          image: {{ include "howso-platform.imagePath" (dict "root" $ "image" .Values.docs.image) | quote }}
+          imagePullPolicy: {{ .Values.images.pullPolicy }}
+          envFrom:
+          - configMapRef:
+              name: platform-configmap-ui2-connection
+          env:
+          - name: HOWSO_LOG_LEVEL
+            value: {{ if (.Values.docs.logLevel) }}{{ .Values.docs.logLevel | quote }}{{ else }}{{ .Values.logLevel | quote }}{{ end }}
+          - name: HOWSO_UMS_HOST
+            value: {{ .Values.ums.subdomain }}.{{ .Values.domain }}
+          ports:
+          {{ if .Values.podTLS.enabled }}
+            - name: https
+              containerPort: 8443
+              protocol: TCP
+          {{ else }}
+            - name: http
+              containerPort: 4180
+              protocol: TCP
+          {{ end }}
+          volumeMounts:
+          - name: platform-docs-server-tls
+            mountPath: /certs
+            readOnly: true
+          resources:
+            {{- toYaml .Values.docs.resources | nindent 12 }}
+      {{ if .Values.podTLS.enabled }}
+        - name: tls-sidecar
+          image: {{ include "howso-platform.imagePath" (dict "root" $ "image" .Values.podTLS.image) | quote }}
+          imagePullPolicy: Always
+          command: ["nginx", "-g", "daemon off;"]
+          volumeMounts:
+            - name: platform-docs-server-tls
+              mountPath: /certs/
+            - name: tls-config-volume
+              mountPath: /etc/nginx/nginx.conf
+              subPath: nginx.conf
+            - name: nginx-cache-volume
+              mountPath: /var/cache/nginx
+          securityContext:
+          {{- toYaml .Values.podTLS.securityContext | nindent 12 }}
+          resources:
+            requests:
+              cpu: 10m
+              memory: 20Mi
+            limits:
+              cpu: 100m
+              memory: 100Mi
+      {{ end }}
+        {{ if .Values.docs.security.enabled }}
+        - name: oauth-proxy
+          image: {{ .Values.docs.security.oauthProxyImage | quote}}
+          imagePullPolicy: Always
+          args:
+          - --provider=oidc
+          - --oidc-issuer-url=https://{{ .Values.ums.subdomain }}.{{ .Values.domain }}/oauth
+          - --redirect-url=https://{{ .Values.docs.subdomain }}.{{ .Values.domain }}/oauth2/callback
+          - --login-url=https://{{ .Values.ums.subdomain }}.{{ .Values.domain }}/oauth/authorize/
+          - --skip-oidc-discovery # Discovery will return URLs with the full external domains - skipping in favor of constructing urls using k8s internal hostnames
+          - --redeem-url={{ if .Values.podTLS.enabled }}https://platform-ums:8443{{ else }}http://platform-ums:8000{{ end }}/oauth/token/
+          - --validate-url={{ if .Values.podTLS.enabled }}https://platform-ums:8443{{ else }}http://platform-ums:8000{{ end }}/userinfo/
+          - --oidc-jwks-url={{ if .Values.podTLS.enabled }}https://platform-ums:8443{{ else }}http://platform-ums:8000{{ end }}/oauth/.well-known/jwks.json
+          - --upstream=http://localhost:8080/ # This is the TLS sidecar - which terminates TLS before fwding to the oauth-proxy
+          - --http-address=0.0.0.0:4180 # The address the proxy listens on
+          - --skip-provider-button # Docs and UMS part of the same platform - so provider authorization step redundant
+          - --insecure-oidc-skip-issuer-verification=true # The use of internal & external endpoints creates a mismatch between the issuer in the token and config
+          - --email-domain=*
+          - --cookie-domain=.{{ .Values.domain }} # The ums end-session endpoint needs to be able to delete the cookie - so using the parent domain
+          - --cookie-expire=1h30m0s
+          - --cookie-refresh=30m
+          - --cookie-refresh=30m
+          - --cookie-samesite=strict
+          - --cookie-secure=true
+          - --cookie-httponly=true # Default - java script not allowed to touch the cookie
+          - --cookie-name=howso_platform_docs_oauth_proxy
+          - --provider-ca-file=/certs/platform-ca-publickey.crt
+          - --whitelist-domain={{ .Values.ums.subdomain }}.{{ .Values.domain }} # Used for logout - which needs to redirect to ums to complete
+          - --scope=openid email profile
+          env:
+          - name: OAUTH2_PROXY_CLIENT_ID
+            valueFrom:
+              secretKeyRef:
+                name: platform-docs-application-secret
+                key: client_id
+          - name: OAUTH2_PROXY_CLIENT_SECRET
+            valueFrom:
+              secretKeyRef:
+                name: platform-docs-application-secret
+                key: client_secret
+          - name: OAUTH2_PROXY_COOKIE_SECRET
+            valueFrom:
+              secretKeyRef:
+                name: platform-docs-application-secret
+                key: cookie_secret
+          securityContext:
+            {{- toYaml .Values.docs.securityContext | nindent 12 }}
+          ports:
+          - containerPort: 4180
+            protocol: TCP
+            name: http
+          volumeMounts:
+          - mountPath: /certs/
+            name: {{ .Values.internalPKI.rootCASecretName }}
+          resources:
+            requests:
+              cpu: 10m
+              memory: 20Mi
+            limits:
+              cpu: 100m
+              memory: 100Mi
+      {{- end }}
+      {{- with .Values.docs.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.docs.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.docs.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      volumes:
+      - name: nginx-cache-volume
+        emptyDir:
+          medium: Memory
+      - name: platform-docs-server-tls
+        secret:
+          secretName: platform-docs-server-tls
+      - name: tls-config-volume
+        configMap:
+          name: platform-docs-tls-sidecar-nginx-config
+      - name: {{ .Values.internalPKI.rootCASecretName }}
+        secret:
+          defaultMode: 420
+          secretName: {{ .Values.internalPKI.rootCASecretName }}
+          items:
+            - key: ca.crt
+              path: platform-ca-publickey.crt
+      automountServiceAccountToken: false
+{{- end }}

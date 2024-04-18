@@ -1,0 +1,90 @@
+{{ if .Values.jobs.traineeArchiver.enabled }}
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: platform-trainee-archiver
+  labels:
+    app.kubernetes.io/part-of: howso-platform
+    app.kubernetes.io/component: trainee-archiver
+  {{- if .Values.jobs.traineeArchiver.podAnnotations }}
+  annotations: {{ toYaml .Values.jobs.traineeArchiver.podAnnotations | nindent 4 }}
+  {{- end }}
+spec:
+  schedule: "{{ .Values.jobs.traineeArchiver.schedule }}"
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  startingDeadlineSeconds: 300
+  jobTemplate:
+    spec:
+      parallelism: 1 
+      backoffLimit: {{ .Values.jobs.traineeArchiver.backoffLimit }}
+      activeDeadlineSeconds: {{ .Values.jobs.traineeArchiver.activeDeadlineSeconds }}
+      template:
+        metadata:
+          labels:
+            app.kubernetes.io/part-of: howso-platform
+            app.kubernetes.io/component: trainee-archiver
+          {{- if .Values.jobs.traineeArchiver.podAnnotations }}
+          annotations: {{ toYaml .Values.jobs.traineeArchiver.podAnnotations | nindent 12 }}
+          {{- end }}
+        spec:
+          {{- with .Values.images.pullSecrets }}
+          imagePullSecrets:
+             {{- toYaml . | nindent 10 }}
+          {{- end }}
+          restartPolicy: Never
+          containers:
+          - name: trainee-archiver 
+            image: {{ include "howso-platform.imagePath" (dict "root" $ "image" .Values.jobs.traineeArchiver.image) | quote }}
+            securityContext: {{- toYaml .Values.jobs.traineeArchiver.securityContext | nindent 14 }}
+            envFrom:
+            - configMapRef:
+                name: platform-configmap
+            - configMapRef:
+                name: platform-configmap-object-store-connection
+            env:
+            - name: TMPDIR
+              value: "/tmp/dp/"
+            - name: HOWSO_LOG_LEVEL
+              value: {{ if (.Values.jobs.traineeArchiver.logLevel) }}{{ .Values.jobs.traineeArchiver.logLevel | quote }}{{ else }}{{ .Values.logLevel | quote }}{{ end }}
+            imagePullPolicy: "{{ .Values.images.pullPolicy }}" 
+            volumeMounts:
+            - name: temp-volume
+              mountPath: /tmp/dp
+            - name: objstore-credentials
+              mountPath: /secrets/objstore-credentials
+              readOnly: true
+            - mountPath: /certs/
+              name: {{ .Values.internalPKI.rootCASecretName }}
+            {{- if and (.Values.datastores.objectStore.serverVerification) (.Values.datastores.objectStore.serverVerificationCustomCertChain) }}
+            - mountPath: /access-certs/objstore
+              name: object-store-crtchain
+            {{- end }}
+            resources: {{ toYaml .Values.jobs.traineeArchiver.resources | nindent 14 }}
+          securityContext: {{- toYaml .Values.jobs.traineeArchiver.podSecurityContext | nindent 12 }}
+          volumes:
+          - name: temp-volume
+            emptyDir:
+              medium: Memory
+          - name: objstore-credentials
+            secret:
+              defaultMode: 420
+              secretName: {{ if .Values.datastores.objectStore.existingSecret }}{{ .Values.datastores.objectStore.credentialsSecretName }}{{ else }}platform-object-store-credentials{{ end }}
+          - name: {{ .Values.internalPKI.rootCASecretName }}
+            secret:
+              defaultMode: 420
+              secretName: {{ .Values.internalPKI.rootCASecretName }}
+              items:
+                - key: ca.crt
+                  path: platform-ca-publickey.crt
+          {{- if and (.Values.datastores.objectStore.serverVerification) (.Values.datastores.objectStore.serverVerificationCustomCertChain) }}
+          - name: object-store-crtchain
+            secret:
+              defaultMode: 420
+              secretName: {{ default .Values.internalPKI.rootCASecretName .Values.datastores.objectStore.serverCertChainSecretName }} 
+              items:
+                - key: ca.crt 
+                  path: object-store-certchain.crt
+          {{- end }}
+{{- end }}

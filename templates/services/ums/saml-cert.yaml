@@ -1,0 +1,35 @@
+{{ if .Values.ums.enabled }}
+{{ if .Values.saml.enabled }}
+{{- if not .Values.jobs.certGenerator.enabled }}
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: platform-ums-saml-keys
+spec:
+  # Secret names are always required.
+  secretName: platform-ums-saml-keys 
+  duration: 2160h # 90d
+  renewBefore: 360h # 15d
+  subject:
+    organizations:
+    - howso 
+  # The use of the common name field has been deprecated since 2000 and is
+  # discouraged from being used.
+  #commonName: {{ .Values.subdomain }} 
+  isCA: false
+  privateKey:
+    algorithm: RSA
+    encoding: PKCS1
+    size: 4096 
+  usages:
+    - server auth
+    - client auth
+  # At least one of a DNS Name, URI, or IP address is required.
+  dnsNames:
+  - {{ .Values.ums.subdomain }}.{{ .Values.domain }}
+  issuerRef:
+    name: {{ .Values.internalPKI.rootCASecretName }}
+    kind: Issuer
+{{- end }}
+{{ end }}
+{{ end }}

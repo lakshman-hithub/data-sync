@@ -1,0 +1,26 @@
+{{ if .Values.nats.tls.enabled }}
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: platform-worker-nats-client-tls 
+spec:
+  secretName: platform-worker-nats-client-tls 
+  duration: 2160h # 90d
+  renewBefore: 360h # 15d
+  subject:
+    organizations:
+    - Howso Platform
+  commonName: platform-worker.default.svc.cluster.local
+  isCA: false
+  privateKey:
+    algorithm: RSA
+    encoding: PKCS1
+    size: 4096
+  usages:
+    - client auth
+  dnsNames:
+  - platform-worker 
+  issuerRef:
+    name: {{ .Values.internalPKI.rootCASecretName }}
+    kind: Issuer
+{{ end }}

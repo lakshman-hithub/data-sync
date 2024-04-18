@@ -1,0 +1,84 @@
+{{ if and ( .Values.customResourceDefinitions.legacy) (not .Values.customResourceDefinitions.skip) }}
+# The CRD for Diveplane Platform Trainees 
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  name: diveplanetrainees.diveplane.com
+  annotations: 
+    "helm.sh/resource-policy": keep 
+spec:
+  scope: Namespaced
+  group: diveplane.com 
+  names:
+    kind: DiveplaneTrainee
+    plural: diveplanetrainees
+    singular: diveplanetrainee
+    shortNames:
+      - dptrainees
+  versions:
+    - name: v1
+      served: true
+      storage: true
+      schema:
+        openAPIV3Schema:
+          type: object
+          properties:
+            spec:
+              type: object
+              x-kubernetes-preserve-unknown-fields: true
+            status:
+              type: object
+              x-kubernetes-preserve-unknown-fields: true
+      additionalPrinterColumns:
+        - name: SMS State 
+          type: string
+          jsonPath: .status.sms_desired
+          description: SMS Desired trainee state 
+        - name: Idle 
+          type: string
+          jsonPath: .status.worker_idle
+          description: Worker reported idle status 
+        - name: Lib Type 
+          type: string
+          jsonPath: .spec.library_postfix
+          description: Binary type, i.e. multithreaded 
+        - name: Req. CPU 
+          type: string
+          jsonPath: .spec.trainee_resources.requests.cpu
+          description: Requests CPU 
+        - name: Lim. CPU 
+          type: string
+          jsonPath: .spec.trainee_resources.limits.cpu
+          description: Limits CPU 
+        - name: Req. Mem 
+          type: string
+          jsonPath: .spec.trainee_resources.requests.memory
+          description: Requests Memory 
+        - name: Lim. Mem 
+          type: string
+          jsonPath: .spec.trainee_resources.limits.memory
+          description: Limits Memory 
+        - name: Replicas 
+          type: string
+          jsonPath: .spec.read_replicas
+          description: Number of replicas 
+          priority: 1
+        - name: State 
+          type: string
+          jsonPath: .status.state
+          description: Phase of underlying resources i.e. ONLINE 
+        - name: Age
+          jsonPath: .metadata.creationTimestamp
+          description: The age of this resource
+          type: date
+        - name: Clnt Metadata
+          type: string
+          jsonPath: .spec.trainee_metadata
+          description: metadata assigned to trainee by client
+          priority: 1
+        - name: Ptfm Metadata
+          type: string
+          jsonPath: .spec.platform_trainee_metadata
+          description: metadata assigned to trainee by platform 
+          priority: 1
+{{ end }}          

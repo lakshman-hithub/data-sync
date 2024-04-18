@@ -1,0 +1,31 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: platform-configmap-object-store-connection
+data:
+  # Object store connection details
+  HOWSO_OBJECT_STORE_SCHEME: "{{ .Values.datastores.objectStore.scheme}}"
+  HOWSO_OBJECT_STORE_ENDPOINT: "{{ .Values.datastores.objectStore.endpoint }}"
+  HOWSO_OBJECT_STORE_BUCKET_NAME: "{{ .Values.datastores.objectStore.bucketName }}"
+  HOWSO_OBJECT_STORE_EXISTING_SECRET: "{{.Values.datastores.objectStore.existingSecret }}"
+  HOWSO_OBJECT_STORE_CREDENTIALS_SECRETNAME: "{{ .Values.datastores.objectStore.credentialsSecretName }}"
+  HOWSO_OBJECT_STORE_CREDENTIALS_ACCESSKEY_DATAKEY: "{{ .Values.datastores.objectStore.accesskeyDataKey }}"
+  HOWSO_OBJECT_STORE_CREDENTIALS_SECRETKEY_DATAKEY: "{{ .Values.datastores.objectStore.secretkeyDataKey }}"
+  HOWSO_OBJECT_STORE_CERT_CHAIN_SECRETNAME: "{{ default .Values.internalPKI.rootCASecretName .Values.datastores.objectStore.serverCertChainSecretName }}"
+  HOWSO_OBJECT_STORE_REGION: "{{ .Values.datastores.objectStore.region }}"
+  HOWSO_OBJECT_STORE_SERVER_VERIFICATION: "{{ .Values.datastores.objectStore.serverVerification }}"
+  HOWSO_OBJECT_STORE_VERIFY_WITH_CUSTOM_CERTCHAIN: "{{ .Values.datastores.objectStore.serverVerificationCustomCertChain }}"
+  HOWSO_OBJECT_STORE_SIGNATURE_VERSION: "{{ .Values.datastores.objectStore.signatureVersion }}"
+  HOWSO_OBJECT_STORE_ACCESS_KEY_PATH: "/secrets/objstore-credentials/{{ .Values.datastores.objectStore.accesskeyDataKey }}"
+  HOWSO_OBJECT_STORE_SECRET_KEY_PATH: "/secrets/objstore-credentials/{{ .Values.datastores.objectStore.secretkeyDataKey }}"
+  # Presigned urls
+  HOWSO_OBJECT_STORE_PRESIGNED_SCHEME: {{ .Values.presigned.scheme }}
+  HOWSO_OBJECT_STORE_PRESIGNED_HOST: {{ .Values.presigned.subdomain }}.{{ .Values.domain }}
+  # Prefix locations (relative to bucket)
+  HOWSO_OBJECT_STORE_DATA_RESOURCES_LOCATION: "{{ .Values.datastores.objectStore.locations.data }}"
+  HOWSO_OBJECT_STORE_TRAINEES_LOCATION: "{{ .Values.datastores.objectStore.locations.trainees }}"
+  HOWSO_OBJECT_STORE_JOBS_LOCATION: "{{ .Values.datastores.objectStore.locations.jobs }}"
+  # Fully qualified locations
+  HOWSO_OBJECT_STORE_FQ_TRAINEE_PATH: "{{ if .Values.datastores.objectStore.locations.trainees }}{{ .Values.datastores.objectStore.bucketName }}/{{ .Values.datastores.objectStore.locations.trainees }}{{ else }}{{ .Values.datastores.objectStore.bucketName }}{{ end }}"
+  HOWSO_OBJECT_STORE_FQ_JOBS_PATH: "{{ .Values.datastores.objectStore.bucketName }}/{{ .Values.datastores.objectStore.locations.jobs }}"
+  HOWSO_OBJECT_STORE_FQ_DATA_PATH: "{{ .Values.datastores.objectStore.bucketName }}/{{ .Values.datastores.objectStore.locations.data }}"

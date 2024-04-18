@@ -1,0 +1,26 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: platform-configmap-worker-conf
+data:
+  HOWSO_TRAINEES_CRD_KIND: {{ .Values.customResourceDefinitions.trainee.kind | quote }}
+  HOWSO_TRAINEES_CRD_PLURAL: {{ .Values.customResourceDefinitions.trainee.plural | quote }}
+  HOWSO_TRAINEES_CRD_SINGULAR: {{ .Values.customResourceDefinitions.trainee.singular | quote }}
+  HOWSO_TRAINEES_CRD_GROUP:  {{ .Values.customResourceDefinitions.trainee.group | quote }}
+  HOWSO_TRAINEES_CRD_VERSION: {{ .Values.customResourceDefinitions.trainee.version | quote }}
+  HOWSO_TRAINEE_RESOURCES_MEMORY_REQUEST: {{ .Values.worker.resources.singlethreaded.requests.memory | quote }} 
+  HOWSO_TRAINEE_RESOURCES_MEMORY_LIMIT: {{ .Values.worker.resources.singlethreaded.limits.memory | quote }}
+  HOWSO_TRAINEE_RESOURCES_MEMORY_REQUEST_MT: {{ .Values.worker.resources.multithreaded.requests.memory | quote }}
+  HOWSO_TRAINEE_RESOURCES_MEMORY_LIMIT_MT: {{ .Values.worker.resources.multithreaded.limits.memory | quote }}
+  HOWSO_TRAINEE_RESOURCES_CPU_REQUEST: {{ .Values.worker.resources.singlethreaded.requests.cpu | quote }}
+  HOWSO_TRAINEE_RESOURCES_CPU_LIMIT: {{ .Values.worker.resources.singlethreaded.limits.cpu | quote }}
+  HOWSO_TRAINEE_RESOURCES_CPU_REQUEST_MT: {{ .Values.worker.resources.multithreaded.requests.cpu | quote }}
+  HOWSO_TRAINEE_RESOURCES_CPU_LIMIT_MT: {{ .Values.worker.resources.multithreaded.limits.cpu | quote }}
+  HOWSO_TRAINEE_RESOURCES_DEFAULT_AMLG_LIBRARY: {{ .Values.worker.defaultAmlgLibType | quote }}
+  HOWSO_TRAINEE_RESOURCES_SCALING_POLICY: {{ .Values.worker.resources.policy | quote }}
+  TRAINEE_VERTICAL_AUTOSCALING: {{ .Values.sms.traineeVerticalAutoscaling.enabled | quote }}
+  TRAINEE_VERTICAL_AUTOSCALING_RECOMMENDATIONS_ONLY: {{ .Values.sms.traineeVerticalAutoscaling.recommendationsOnly | quote }}
+  HOWSO_TRAINEES_POD_ANNOTATIONS: {{ .Values.worker.podAnnotations | toJson | quote }}
+  HOWSO_TRAINEES_TOLERATIONS: {{ .Values.tolerations.workers | toJson | quote }}
+  HOWSO_TRAINEES_POD_SECURITY_CONTEXT: {{ .Values.worker.podSecurityContext | toJson | quote }}
+  HOWSO_TRAINEES_SECURITY_CONTEXT: {{ .Values.worker.securityContext | toJson | quote }}

@@ -1,0 +1,10 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: platform-configmap-restapi-connection
+data:
+  # Api connection details 
+  HOWSO_API_URL: https://{{ .Values.restapi.subdomain }}.{{ .Values.domain }}
+  HOWSO_API_HOST: {{ .Values.restapi.subdomain }}.{{ .Values.domain }}
+  HOWSO_API_PORT: "443"
+  HOWSO_API_URL_VERSION: "2"

@@ -1,0 +1,9 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: platform-configmap-api-connection
+data:
+  # Api connection details
+  HOWSO_API_V3_HOST: {{ .Values.api.subdomain }}.{{ .Values.domain }}
+  HOWSO_API_V3_INTERNAL_URL: {{ if .Values.podTLS.enabled }}https://platform-api-v3:8443{{ else }}http://platform-api-v3:8080{{ end }}
+  HOWSO_API_V3_URL: https://{{ .Values.api.subdomain }}.{{ .Values.domain }}

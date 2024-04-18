@@ -1,0 +1,9 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: platform-configmap-ums-connection
+data:
+  HOWSO_UMS_INTERNAL_URL: {{ if .Values.podTLS.enabled }}https://platform-ums:8443{{ else }}http://platform-ums:8000{{ end }}
+  HOWSO_UMS_URL: https://{{ .Values.ums.subdomain }}.{{ .Values.domain }}
+  HOWSO_UMS_OAUTH_TENANT: https://{{ .Values.ums.subdomain }}.{{ .Values.domain }}/oauth
+  HOWSO_UMS_ADMIN_USER_NAME: {{ .Values.umsAdminUser | quote }}

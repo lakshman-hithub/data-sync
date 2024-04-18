@@ -1,0 +1,133 @@
+{{ if .Values.ui2.enabled }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "howso-platform.ui2.fullname" . }}
+  labels:
+    app.kubernetes.io/part-of: howso-platform
+    app.kubernetes.io/component: platform-ui2
+    {{- include "howso-platform.ui2.labels" . | nindent 4 }}
+spec:
+  replicas: {{ .Values.ui2.replicaCount }}
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+  selector:
+    matchLabels:
+      {{- include "howso-platform.ui2.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      annotations:
+      {{- with .Values.ui2.podAnnotations }}
+        {{ toYaml . | nindent 8 }}
+      {{- end }}
+        checksum/api: {{ include (print $.Template.BasePath "/configmaps/configmap-api-connection.yml") . | sha256sum }}
+        checksum/ui2: {{ include (print $.Template.BasePath "/configmaps/configmap-ui2-connection.yml") . | sha256sum }}
+        checksum/pypi: {{ include (print $.Template.BasePath "/configmaps/configmap-pypi-connection.yml") . | sha256sum }}
+        checksum/obj: {{ include (print $.Template.BasePath "/configmaps/configmap-object-store-connection.yml") . | sha256sum }}
+      labels:
+        app.kubernetes.io/part-of: howso-platform
+        app.kubernetes.io/component: platform-ui2
+        {{- include "howso-platform.ui2.selectorLabels" . | nindent 8 }}
+    spec:
+      serviceAccountName: platform-minimal-serviceaccount
+      serviceAccount: platform-minimal-serviceaccount
+      tolerations:
+        {{- toYaml .Values.tolerations.services | nindent 8 }}
+      {{- with .Values.images.pullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      securityContext:
+        {{- toYaml .Values.ui2.podSecurityContext | nindent 8 }}
+      containers:
+        - name: ui
+          securityContext:
+            {{- toYaml .Values.ui2.securityContext | nindent 12 }}
+          image: {{ include "howso-platform.imagePath" (dict "root" $ "image" .Values.ui2.image) | quote }}
+          imagePullPolicy: {{ .Values.images.pullPolicy }}
+          envFrom:
+          - configMapRef:
+              name: platform-configmap-ui2-connection
+          - configMapRef:
+              name: platform-configmap-object-store-connection
+          - configMapRef:
+              name: platform-configmap-api-connection
+          - configMapRef:
+              name: platform-configmap-pypi-connection
+          env:
+          - name: HOWSO_LOG_LEVEL
+            value: {{ if (.Values.ui2.logLevel) }}{{ .Values.ui2.logLevel | quote }}{{ else }}{{ .Values.logLevel | quote }}{{ end }}
+          - name: HOWSO_JOBS_ENABLED
+            value: {{ if eq (toString .Values.jobRunner.enabled) "true" }}"true"{{ else }}"false"{{ end }}
+          - name: HOWSO_AUTH_CLIENT_ID
+            value: platform-ui-app-client-id
+          - name: HOWSO_AUTH_HOST
+            value: {{ .Values.ums.subdomain }}.{{ .Values.domain }}
+          - name: HOWSO_PLATFORM_DOMAIN
+            value: {{ .Values.domain }}
+          - name: HOWSO_DOCS_HOST
+            value: {{ .Values.docs.subdomain }}.{{ .Values.domain }}
+          - name: HOWSO_MANAGEMENT_HOST
+            value: {{ .Values.ums.subdomain }}.{{ .Values.domain }}
+          - name: HOWSO_UI_HOST
+            value: {{ .Values.ui2.subdomain }}.{{ .Values.domain }}
+          {{ if .Values.pypi.security.enabled }}
+          - name: HOWSO_PYPI_SECURITY_ENABLED
+            value: "true"
+          {{ end }}
+          ports:
+          {{- if .Values.podTLS.enabled }}
+            - name: https
+              containerPort: 8443
+              protocol: TCP
+          {{- else }}
+            - name: http
+              containerPort: 8000
+              protocol: TCP
+          {{ end }}
+          livenessProbe:
+            httpGet:
+              scheme: HTTP
+              path: /ui-health
+              port: 8080
+          volumeMounts:
+          - name: {{ .Values.internalPKI.rootCASecretName }}
+            mountPath: /ca-cert/
+            readOnly: true
+          {{- if .Values.podTLS.enabled }}
+          - name: platform-ui-v2-server-tls
+            mountPath: /certs
+            readOnly: true
+          {{- end }}
+          resources:
+            {{- toYaml .Values.ui2.resources | nindent 12 }}
+      {{- with .Values.ui2.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.ui2.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.ui2.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      volumes:
+      - name: {{ .Values.internalPKI.rootCASecretName }}
+        secret:
+          defaultMode: 420
+          secretName: {{ .Values.internalPKI.rootCASecretName }}
+          items:
+            - key: ca.crt
+              path: ca.crt
+      {{- if .Values.podTLS.enabled }}
+      - name: platform-ui-v2-server-tls
+        secret:
+          secretName: platform-ui-v2-server-tls
+      {{- end }}
+      automountServiceAccountToken: false
+{{ end }}

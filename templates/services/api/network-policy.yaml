@@ -1,0 +1,62 @@
+{{ if .Values.networkPolicies.enabled }}
+kind: NetworkPolicy
+apiVersion: networking.k8s.io/v1
+metadata:
+  name: platform-api-v3-ingress-policy
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/component: api-service
+  policyTypes:
+  - Ingress
+  ingress:
+  - ports:
+    - protocol: TCP
+      port: 8443
+    - protocol: TCP
+      port: 8080
+{{ end }}
+---
+{{ if .Values.networkPolicies.egress.enabled }}
+kind: NetworkPolicy
+apiVersion: networking.k8s.io/v1
+metadata:
+  name: platform-api-v3-egress-policy
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/component: api-service
+  policyTypes:
+  - Egress
+  egress:
+  - to:
+    - podSelector:
+        matchLabels:
+          app.kubernetes.io/name: nats
+          app.kubernetes.io/instance: platform-nats
+    ports:
+    - protocol: TCP
+      port: 4222
+  - to:
+    - podSelector:
+        matchLabels:
+          app.kubernetes.io/component: object-store
+    ports:
+    - protocol: TCP
+      port: 9000
+  - to:
+    - podSelector:
+        matchLabels:
+          app.kubernetes.io/name: redis
+          app.kubernetes.io/instance: platform-redis
+    ports:
+    - protocol: TCP
+      port: 6379
+  # Access to k8s api server
+  - to:
+    - ipBlock:
+        cidr: 0.0.0.0/0
+    ports:
+    - protocol: TCP
+      port: 6443
+{{ end }}

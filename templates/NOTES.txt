@@ -1,0 +1,18 @@
+{{- $parentDomain := .Values.domain -}}
+
+Howso Platform has been installed!
+
+First - accept the self-signed certificates in your browser at the following URLs:
+- https://{{ .Values.domain }}
+- https://{{ .Values.ums.subdomain }}.{{ .Values.domain }} 
+- https://{{ .Values.restapi.subdomain }}.{{ .Values.domain }} 
+- https://{{ .Values.api.subdomain }}.{{ .Values.domain }} 
+
+You can access the platform at: https://{{ .Values.domain }}
+
+To get started, please log in with the initial credentials (you will be prompted to change the password):
+
+  Username: {{ .Values.umsAdminUser }}
+  Password: {{ .Values.umsInitialAdminPw }}
+
+For more information and documentation, please visit https://github.com/howsoai/platform-installation-examples 

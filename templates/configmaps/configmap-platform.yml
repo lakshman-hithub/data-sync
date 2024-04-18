@@ -1,0 +1,17 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: platform-configmap
+data:
+  HOWSO_ENV: "{{ .Values.env }}"
+  HOWSO_PLATFORM_VERSION: "{{ .Values.platformVersion }}"
+  HOWSO_PLATFORM_CA_SECRET: "{{ .Values.internalPKI.rootCASecretName }}"
+  HOWSO_UMS_SUBDOMAIN: "{{ .Values.ums.subdomain }}"
+  HOWSO_PYPI_SUBDOMAIN: "{{ .Values.pypi.subdomain }}"
+  HOWSO_RESTAPI_SUBDOMAIN: "{{ .Values.restapi.subdomain }}"
+  HOWSO_API_SUBDOMAIN: "{{ .Values.api.subdomain }}"
+  HOWSO_PRESIGNED_SUBDOMAIN: "{{ .Values.presigned.subdomain }}"
+  HOWSO_UI2_SUBDOMAIN: "{{ .Values.ui2.subdomain }}"
+  HOWSO_PARENT_DOMAIN: "{{ .Values.domain }}"
+  HOWSO_GLOBAL_LOG_LEVEL: {{ .Values.logLevel | quote }}
+  HOWSO_GLOBAL_LOG_FORMAT: {{ .Values.logFormat | quote }}

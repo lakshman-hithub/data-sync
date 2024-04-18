@@ -1,0 +1,7 @@
+apiVersion: v1
+kind: Secret
+metadata:
+  name: platform-api-v2-ums-api-token
+type: Opaque
+data:
+  token: {{ .Values.restapi.umsApiToken | b64enc | quote }} 

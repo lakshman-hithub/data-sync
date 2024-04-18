@@ -1,0 +1,16 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: platform-configmap-nats-connection
+data:
+  NATS_TLS_ENABLED: "{{ .Values.nats.tls.enabled }}"
+  NATS_SERVER_LIST: "{{ .Values.nats.serverList }}"
+  # The following are only used if NATS_TLS_ENABLED is true
+  {{- if .Values.nats.tls.enabled }}
+  NATS_CERT: "/client-certs/nats/tls.crt"  
+  NATS_TLS_CERT: "/client-certs/nats/tls.crt"  
+  NATS_KEY: "/client-certs/nats/tls.key"
+  NATS_TLS_KEY: "/client-certs/nats/tls.key"
+  NATS_CA: "/client-certs/nats/ca.crt"
+  NATS_PUBLIC_KEY: "/client-certs/nats/ca.crt" 
+  {{- end }}

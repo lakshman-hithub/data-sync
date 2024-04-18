@@ -1,0 +1,1315 @@
+################################################################################
+################################################################################
+#
+# Howso Platform Helm Chart Values
+#
+################################################################################
+################################################################################
+
+################################################################################
+#
+# Global options
+#
+################################################################################
+
+# domain is the parent domain of the platform. Certain services will be exposed at subdomains of this domain.  All domains must be resolvable to the ingress controller.
+domain: howso-platform.example.com
+# platformVersion is the release version of the platform.  It ties with replicated release versions.  It is distinct from the chart/app version.
+platformVersion: 2024.4.0
+# env set to development to enable context specific development configuration, i.e. FLASK_ENV. Otherwise leave as production.
+env: production
+# logLevel values 50(CRITICAL)|40(ERROR)|30(WARNING)|20(INFO)|15(SAFEDEBUG)|10(DEBUG)|5(TRACE)
+# note SAFEDEBUG is a custom level that is between INFO and DEBUG - it avoids exposing data in logs.
+# logLevel can be overridden for certain services.
+logLevel: 20
+# logFormat values standard|detailed|structured
+logFormat: standard
+# umsAdminUser is the username of the initial admin user set in the User Management Service
+umsAdminUser: platform-admin
+# umsAdminEmail is the email of the initial admin user
+umsAdminEmail: admin@example.com
+# umsInitialAdminPw is used to bootstrapped into a proper credential after first login after setup.  It is not used after that, and is therefore not treated as a sensitive value.
+umsInitialAdminPw: platform
+#
+#
+################################################################################
+# Global Image configuration
+################################################################################
+
+# Images are assumed to share the same registry, namespace and pull policy
+# image and tag are set within the service configuration - the rest are global
+# The values correspond to the following full container image name
+# {registry}/{registryNamespace}/{image}:{tag}
+images:
+  # pullSecrets is a list of secrets used to pull images from private registries - set globally for all images
+  pullSecrets:
+    - name: platform-registry
+  # registry is the default registry for images - set globally for all images
+  registry: dpbuild-docker-edge.jfrog.io
+  # registryNamespace is any path added consistently to all images name. Leave blank "" if not required
+  registryNamespace: dp
+  # pullPolicy is the default pull policy for all images.  Allowed values are Always, Never, IfNotPresent
+  pullPolicy: IfNotPresent
+#
+#
+################################################################################
+# Pod TLS configuration
+################################################################################
+
+# Configures HTTPS for services at the pod level, so intra-service traffic and traffic between ingress and the services is encrypted
+# This may be not required, or conflict with a service mesh configuration
+# Will remove any certmanager Certificate objects
+podTLS:
+  # requires Certmanager
+  enabled: false
+  # Image (for the sidecar for TLS termination)
+  image:
+    name: platform-nginx
+    tag: "1.1"
+  securityContext: {}
+#
+#
+################################################################################
+# Platform Public Key Infrastructure configuration
+################################################################################
+internalPKI:
+  # The name of the secret containing the root CA certificate and key.  Created by the cert-generator job, but can be created manually or with cert-manager.
+  rootCASecretName: platform-ca
+  # Changing this value will point ingress certs at a different cert-manager issuer
+  ingressCertIssuer: null
+  useClusterIssuer: false
+#
+#
+################################################################################
+# Ingress configuration
+################################################################################
+
+ingress:
+  # ingress.ingressClassName is the ingress class name to use for all ingresses.  Leave null to not set.
+  ingressClassName: null
+# Values to swap out the internal ca certificates
+# overrideIngressCerts is used to globally set a secret to use for ingress tls.  This cert is created by the cert-generator job, or can be created manually.
+# if false, then annotations for certmanager to use the {ingressCertIssuer} issuer to create tls certs for the ingress will be added.
+overrideIngressCerts:
+  enabled: true
+  secretName: platform-ingress-tls
+#
+#
+################################################################################
+# Network Policy configuration
+################################################################################
+networkPolicies:
+  # globally switch on/off ingress network policies
+  enabled: false
+  # Egress is controlled seperately, as it is not supported on all platforms
+  egress:
+    # globally switch on/off egress network policies
+    enabled: false
+#
+#
+################################################################################
+# Replicated configuration
+################################################################################
+
+# Values populated when the Howso Platform is installed as a Replicated KOTS application.
+# These values are set when assembled by the Replicated KOTS application.  Otherwise leave as default.
+replicated:
+  # isReplicatedOnprem is true if the Howso Platform is installed as a Replicated KOTS application.
+  isReplicatedOnprem: false
+  # versionLabel is the version label of the Replicated release.
+  versionLabel: not-applicable
+  # customerName is the name of the customer.
+  customerName: null
+  # isAirgap is true if the Howso Platform is installed as a Replicated KOTS application in airgap mode.
+  isAirgap: false
+  # replicatedSeq is the sequence number of the Replicated release.
+  replicatedSeq: null
+  # replicatedChannel is the channel of the Replicated release.
+  replicatedChannel: null
+  # releaseNotes is the release notes of the Replicated release.
+  releaseNotes: null
+  # license is the license of the Replicated release.
+  license: {}
+  #license:
+  #   id: not-set
+  #   type: not-set
+  #   geminai: true
+  #   reactor: false
+  #   expiresAt: "2021-09-28T00:00:00Z" # Leave commented, and isReplicatedOnprem: true for 'no expiry'
+#
+#
+################################################################################
+# SSO configuration
+################################################################################
+saml:
+  # saml.enabled will enable SSO to the User Management Service via SAML
+  enabled: false
+  # idpMetadataURL is the metadata url of your IdP's SAML app i.e. https://mycompany.example.com/app/idfortheappxyz/sso/saml/metadata.
+  idPMetadataURL: null
+oidc:
+  # oidc.enabled will enable SSO to the User Management Service via OpenID Connect
+  enabled: false
+  # clientID is the client id identifying the Howso Platform as an application in your identity provider.
+  clientID: null
+  # clientSecret is the client secret shared with the Howso Platform to establish the Howso Platform as trusted to the identity provider.
+  clientSecret: null
+  # algorithm is the algorithm the IdP uses to sign ID tokens - RS256 is the only supported value.
+  algorithm: "RS256"
+  # jwksEndpoint is the URL for the identity server JWKS endpoint i.e. https://mycompany.idp.exmaple.com/keys.
+  jwksEndpoint: null
+  # authorizeEndpoint is the URL for the identity server authorize endpoint i.e. https://mycompany.idp.example.com/authorize.
+  authorizeEndpoint: null
+  # tokenEndpoint is the URL for the identity server token endpoint i.e. https://mycompany.idp.example.com/token.
+  tokenEndpoint: null
+  # userinfoEndpoint is the URL for the identity server userinfo endpoint i.e. https://mycompany.idp.example.com/userinfo.
+  userinfoEndpoint: null
+  # scopes is set to the OpenID Connect scopes to request during login.  Use 'openid email profile' unless your idp requires additional scopes.
+  scopes: "openid email profile"
+#
+
+#
+#
+################################################################################
+# Custom Resource Definitions configuration
+################################################################################
+# Choose if to install the CRDS with the chart.  If false, the CRDs must be installed seperately.
+# this can be beneficial as it is a cluster scoped component, and requires cluster admin permissions to install.
+# and only needs to be installed once per cluster.
+# CRD config allows for the old diveplane based names (diveplanetrainees & diveplane.com, DiveplaneTrainee)
+# For backwards compatibility.  Don't change unless you know what you are doing.
+# Note - the CRD is not required to be installed before any other chart component.
+# so this chart deliberately does not use the crds directory chart paradigm, so it can benefity from
+# templating.
+customResourceDefinitions:
+  # customResourceDefinitions.skip will not include the CRDs in the chart.
+  skip: false
+  # customResourceDefinitions.legacy will install the legacy CRD
+  legacy: false
+  trainee:
+    kind: Trainee
+    plural: trainees
+    singular: trainee
+    group: howso.com
+    version: v1
+#
+#
+################################################################################
+# Toleration configuration
+################################################################################
+
+# tolerations are used to confine the on-demand worker workload to worker nodes
+# and keep core services off worker nodes
+tolerations:
+  # tolerations applied to all core services
+  services:
+    - key: howso.com/nodetype
+      operator: "Equal"
+      value: services
+      effect: NoSchedule
+    - key: howso.com/nodetype
+      operator: "Equal"
+      value: services
+      effect: NoExecute
+    - key: howso.com/nodetype
+      operator: "Equal"
+      value: services
+      effect: PreferNoSchedule
+  # tolerations applied to all worker
+  workers:
+    - key: howso.com/nodetype
+      operator: "Equal"
+      value: worker
+      effect: NoSchedule
+    - key: howso.com/nodetype
+      operator: "Equal"
+      value: worker
+      effect: NoExecute
+    - key: howso.com/nodetype
+      operator: "Equal"
+      value: worker
+      effect: PreferNoSchedule
+#
+#
+################################################################################
+# NATS configuration
+################################################################################
+
+# NATS is used for internal messaging between services
+# default values map to the out-of-the-box installations of the following chart
+#  nats https://nats-io.github.io/k8s/helm/charts/ (release-name: platform-nats)
+#  Note: Use --set jetstream.enabled=true
+nats:
+  # serverList is a comma separated list of NATS servers
+  serverList: "nats://platform-nats:4222"
+  tls:
+    # tls.enabled requires internalPKI.enabled: true and certmanager
+    # if enabled client Certificates will be created using the internal PKI issuer
+    # nats will need to be configured to trust the root CA and the service names
+    # platform-api-v3, platform-ums, platform-sms, platform-api-v3, platform-worker
+    enabled: false
+#
+#
+################################################################################
+#
+# Datastore configuration
+#
+################################################################################
+
+# Configuration for the datastore locations used by Howso Platform
+# default values map to out-of-the-box installations of the following charts
+#
+#  postgresql https://charts.bitnami.com/bitnami (release-name: platform-postgres)
+#  redis https://charts.bitnami.com/bitnami (release-name: platform-redis)
+#  minio https://charts.min.io/ (release-name: platform-minio)
+#
+#  NOTE: minio is normally under AGPLv3 license.  Howso Platform only distributes
+#  minio through commercial on prem installs and maintains an OEM license to do so.
+datastores:
+  #
+  #
+  ################################################################################
+  # Object Store configuration
+  ################################################################################
+  objectStore:
+    # s3 (compatible) is only type currently supported
+    type: s3
+    # Endpoint address of the objectstore - only https endpoints supported
+    endpoint: platform-minio:9000
+    # scheme is the protocol used to connect to the objectstore https or http
+    scheme: http
+    # signatureVersion is the signature version used to sign requests to the objectstore (s3v2, s3v4, None).  None will disable checking of signatures.
+    signatureVersion: s3v4
+    # bucketName is the name of the bucket to use for the objectstore
+    bucketName: platform
+    locations:
+      # locations.trainees is the location of trainee data in bucket {bucketName}
+      trainees: trainees
+      # locations.data is the location of dataset data in bucket {bucketName}
+      data: data-resources
+      # locations.jobs is the location of job artifacts in bucket {bucketName}
+      jobs: jobs
+    # region is the region of the objectstore
+    region: null
+    # existingSecret if true objectStore credentials should exist in a secret called {credentialsSecretName} with data keys {accesskeyDatakey} and {secretkeyDataKey}
+    existingSecret: true
+    credentialsSecretName: platform-minio
+    accesskeyDataKey: rootUser
+    secretkeyDataKey: rootPassword
+    # if existingSecret false - then a secret will be created with the credentials {accesskey} and {secretkey}.  accesskeyDataKey should be set to accesskey and secretkeyDataKey to secretkey.
+    # The credentials must have full control over the bucket
+    accesskey: null
+    secretkey: null
+    # serverVerification toggles the verification of the objectstore server certificate
+    serverVerification: false
+    # serverVerificationCustomCertChain if set will use a custom cert chain for server verification, otherwise to verification will use the CA cert bundle used by the botocore client.
+    serverVerificationCustomCertChain: false
+    # If {serverVerificationCustomCertChain} - at data key ca.crt in secret {serverCertChainSecretName} - is a crt bundle, that if trusted, would validate the tls certs of {endpoint}
+    # if {serverVerificationCustomCertChain} true, and {serverCertChainSecretName} not set - the value at internalPKI.rootCASecretName will be used as the cert chain.
+    serverCertChainSecretName: null
+  #
+  #
+  ################################################################################
+  # Postgres configuration
+  ################################################################################
+  postgres:
+    # Platform db specific fields
+    platform:
+      # host of the postgres server where the platform db is hosted
+      host: platform-postgres-postgresql
+      # port of the postgres server where the platform db is hosted
+      port: 5432
+      # name of the postgres database
+      name: postgres
+      # user of the postgres database
+      user: postgres
+      # if {existingSecret} the password will be retrieved from secret {credentialsSecretName} at data key {passwordDataKey}
+      existingSecret: true
+      # if {existingSecret} the password will be retrieved from secret {credentialsSecretName} at data key {passwordDataKey}
+      credentialsSecretName: platform-postgres-postgresql
+      passwordDataKey: postgres-password
+      # if not {existingSecret} Password secret will be generated and given value {password}
+      # password: myDbPassword
+      # https://www.postgresql.org/docs/current/libpq-ssl.html
+      # Values allowed: disable|allow|prefer|require|verify-ca|verify-full
+      # Note: verify-ca and verify-full will require the server cert is trusted in the default stores, or in {serverCertChainSecretName} if supplied
+      # Note: verify-full will require a valid {clientCertSecretName} if server enforces.
+      sslmode: allow
+      # Use custom cert chain for server verification.
+      serverVerificationCustomCertChain: false
+      # If {serverVerificationCustomCertChain} - at data key ca.crt in secret {serverCertChainSecretName} - should be a crt bundle, that if trusted,
+      # would validate the tls cert provided by {host}, it will map to the sslrootcert connection parameter.
+      # if serverVerificationCustomCertChain not set, and serverVerificationCustomCertChain true, the value at internalPKI.rootCASecretName will be used
+      # serverCertChainSecretName:
+      # At data key ca.crt in secret {serverCertChainSecretName} will map to sslrootcert connection parameter
+      # Present client certificates for verification
+      clientVerification: false
+      # If {clientVerification}, secret {clientCertSecretName} at data key tls.crt should map to the postgres sslcert connection parameter
+      # and tls.key to sslkey connection parameter
+      # should be set if sslmode=verify-full (though depends on server enforcement)
+      # clientCertSecretName: platform-postgres-client-tls
+    #
+    # # # # #
+    # UMS db specific fields
+    ums:
+      # host of the postgres server where the ums db is hosted
+      host: platform-postgres-postgresql
+      # port of the postgres server where the ums db is hosted
+      port: 5432
+      # name of the ums database
+      name: postgres
+      # user of the ums database
+      user: postgres
+      # if {existingSecret} the password will be retrieved from secret {credentialsSecretName} at data key {passwordDataKey}
+      existingSecret: true
+      credentialsSecretName: platform-postgres-postgresql
+      passwordDataKey: postgres-password
+      # if not {existingSecret} Password secret will be generated and given value {password}
+      password: null
+      # sslmode is the sslmode used to connect to the postgres server
+      # https://www.postgresql.org/docs/current/libpq-ssl.html
+      # Values allowed: disable|allow|prefer|require|verify-ca|verify-full
+      # Note: verify-ca and verify-full will require the server cert is trusted in the default stores, or in {serverCertChainSecretName} if supplied
+      # Note: verify-full will require a valid {clientCertSecretName} if server enforces.
+      sslmode: allow
+      # If {serverVerificationCustomCertChain} - at data key ca.crt in secret {serverCertChainSecretName} - should be a crt bundle, that if trusted,
+      # would validate the tls cert provided by {host}, it will map to the sslrootcert connection parameter.
+      serverVerificationCustomCertChain: false
+      # if serverVerificationCustomCertChain not set, and serverVerificationCustomCertChain true, the value at internalPKI.rootCASecretName will be used
+      serverCertChainSecretName: null
+      # clientVerification will present client certificates for verification
+      # Should be set if sslmode=verify-full (though depends on server enforcement)
+      clientVerification: false
+      # If {clientVerification}, secret {clientCertSecretName} at data key tls.crt should map to the postgres sslcert connection parameter
+      clientCertSecretName: null
+      # If {clientVerification}, secret {clientCertSecretName} at data key tls.crt should map to the postgres sslcert connection parameter
+      # and tls.key to sslkey connection parameter.
+  #
+  #
+  ################################################################################
+  # Redis configuration
+  ################################################################################
+
+  redis:
+    # host of the redis server
+    host: platform-redis-master
+    port: 6379
+    # if not {existingSecret} a secret will be generated and given value {password}
+    existingSecret: true
+    password: null
+    # if {existingSecret} the password will be retrieved from secret {credentialsSecretName} at data key {passwordDataKey}
+    credentialsSecretName: platform-redis
+    passwordDataKey: redis-password
+    # serverVerification will verify the tls certificate returned by the endpoint
+    serverVerification: false
+    # verifyMode is the SSLContext.verify_mode (none, optional, required).
+    # https://docs.python.org/3/library/ssl.html?highlight=verify_mode#constants
+    # - none: Cert is not checked for expiration or trust
+    # - required: Cert checked for expiration and trust
+    # - optional: Same behavior as required, valid, but not to be used.
+    verifyMode: none
+    # checkHostname to match the hostname during the SSL handshake. Not automatic in any verifyMode.
+    # If {verifyMode} none, this should be false
+    checkHostname: false
+    # serverVerificationCustomCertChain to use a custom cert chain for server verification.
+    # false to verify using the CA cert bundle used by the redis client SSLContext.
+    serverVerificationCustomCertChain: false
+    # If {serverVerificationCustomCertChain} - at data key ca.crt in secret {serverCertChainSecretName} - is a crt bundle, that if trusted,
+    # would validate the tls cert provided by {host}.  If serverCertChainSecretName not set - the value at internalPKI.rootCASecretName will be used
+    serverCertChainSecretName: null
+    # clientVerification will present client certificates for verification.
+    clientVerification: false
+    # If {clientVerification}, secret {clientCertSecretName} at data key tls.crt should map to client cert
+    # and tls.key to client private key to be presented to the redis server for verification.
+    clientCertSecretName: null
+################################################################################
+#
+# Services
+#
+################################################################################
+
+################################################################################
+# User Management Service configuration
+################################################################################
+ums:
+  # enabled will enable the User Management Service - false not supported
+  enabled: true
+  # image configuration for the ums service
+  image:
+    name: platform-ums
+    tag: 2.0.151
+  # subdomain is the subdomain of the platform domain where the service will be exposed
+  subdomain: management
+  # logLevel: 10 # 50(CRITICAL)|40(ERROR)|30(WARNING)|20(INFO)|15(SAFEDEBUG)|10(DEBUG)|5(TRACE)
+  # autoscaling: Horizontal Pod Autoscaler configuration
+  autoscaling:
+    enabled: true
+    minReplicas: 1
+    maxReplicas: 5
+    targetCPUUtilizationPercentage: 40
+    behavior:
+      scaleDown:
+        stabilizationWindowSeconds: 300
+        policies:
+          - type: Percent
+            value: 100
+            periodSeconds: 15
+      scaleUp:
+        stabilizationWindowSeconds: 0
+        policies:
+          - type: Percent
+            value: 100
+            periodSeconds: 30
+  # gunicorn configuration for the ums service
+  gunicornThreads: 10
+  gunicornWorkers: 1
+  timeouts:
+    gunicorn: 300
+    gunicornKeepalive: 45
+    gunicornGraceful: 30
+  # cors.allowedOrigins is the space newline delimited list of origins, that access control headers will whitelist to the UMS.
+  cors:
+    allowedOrigins: ""
+  # nameOverride and fullnameOverride are used to allow global change of the name - don't change unless you know what you are doing
+  nameOverride: "ums"
+  fullnameOverride: "platform-ums"
+  # podAnnotations is a map of annotations to add to the ums pods
+  podAnnotations:
+    cluster-autoscaler.kubernetes.io/safe-to-evict: "true"
+  # podSecurityContext is the pod security context for the ums pods
+  podSecurityContext: {}
+  # securityContext is the security context for the ums containers
+  securityContext:
+    runAsNonRoot: true
+    # runAsUser - set to null will default to 65534 from container image - OpenShift will override with random UID
+    runAsUser: null
+    capabilities:
+      drop:
+        - ALL
+    readOnlyRootFilesystem: false
+    allowPrivilegeEscalation: false
+    seccompProfile:
+      type: RuntimeDefault
+  ingress:
+    # ingress.annotations is a map of annotations to add to the ums ingress
+    annotations:
+      projectcontour.io/response-timeout: "300s"
+      nginx.ingress.kubernetes.io/proxy-body-size: 1G
+      ingress.kubernetes.io/force-ssl-redirect: "true" # https://projectcontour.io/docs/main/config/annotations/#other-annotations
+  # resources is the resource limits and requests for the ums containers
+  resources:
+    requests:
+      cpu: 400m
+      memory: 500Mi
+    limits:
+      cpu: 1000m
+      memory: 2Gi
+  # nodeSelector is the node selector for the ums pods
+  nodeSelector: {}
+  # affinity is the affinity for the ums pods
+  affinity: {}
+#
+
+################################################################################
+# API V2 server configuration
+################################################################################
+restapi:
+  # logLevel: 15 # 50(CRITICAL)|40(ERROR)|30(WARNING)|20(INFO)|15(SAFEDEBUG)|10(DEBUG)|5(TRACE)
+  # subdomain is the subdomain for the API v2 service
+  subdomain: api
+  image:
+    name: platform-restapi
+    tag: 1.1.395
+  # autoscaling: Horizontal Pod Autoscaler configuration
+  autoscaling:
+    enabled: true
+    minReplicas: 1
+    maxReplicas: 5
+    targetCPUUtilizationPercentage: 40
+    behavior:
+      scaleDown:
+        stabilizationWindowSeconds: 300
+        policies:
+          - type: Percent
+            value: 100
+            periodSeconds: 15
+      scaleUp:
+        stabilizationWindowSeconds: 0
+        policies:
+          - type: Percent
+            value: 100
+            periodSeconds: 30
+  # gunicornThreads is the number of Gunicorn worker threads
+  gunicornThreads: 4
+  # gunicornWorkers is the number of Gunicorn worker processes
+  gunicornWorkers: 5
+  # gunicornMaxRequests is the max requests per worker before restart
+  gunicornMaxRequests: 500
+  timeouts:
+    # natsReply is the timeout for NATS reply messages
+    natsReply: 300
+    # natsJSAck is the timeout for NATS Jetstream message acknowledgement
+    natsJSAck: 60
+    # natsJSReply is the timeout for NATS Jetstream reply messages
+    natsJSReply: 300
+    # gunicorn is the timeout for Gunicorn workers
+    gunicorn: 300
+    # gunicornKeepalive is the keepalive timeout for Gunicorn workers
+    gunicornKeepalive: 45
+    # gunicornGraceful is the graceful shutdown timeout for Gunicorn workers
+    gunicornGraceful: 30
+  cors:
+    # allowedOrigins is the comma-separated list of allowed CORS origins
+    allowedOrigins: ""
+  # apiSecret is the Flask SECRET_KEY
+  apiSecret: somesecretkeythatisaboutfiftycharacterslong
+  # umsApiToken is the shared token for ums and restapi for internal api calls
+  umsApiToken: cMBP9PD2KAikVYx766wkNz4dTvwARS3hM6JtnV6jfUBiLDCBuMGcfjpD6U6CUfBApPS4xHCux7z8jHLpmGNXJ587b9MWwNteanrUBcuknfkqEpfVibmY9fdBXEfkUJWMRV5nYdxd9xjx
+  internalApis:
+    # enabled is the flag to enable internal testing API settings
+    enabled: false
+  # nameOverride and fullnameOverride are used to allow global change of the name - don't change unless you know what you are doing
+  nameOverride: "restapi"
+  fullnameOverride: "platform-api-v2"
+  # podAnnotations is the annotations for the API v2 pods
+  podAnnotations:
+    cluster-autoscaler.kubernetes.io/safe-to-evict: "true"
+  # podSecurityContext is the security context for the API v2 pods
+  podSecurityContext: {}
+  securityContext:
+    runAsNonRoot: true
+    # runAsUser - set to null will default to 65534 from container image - OpenShift will override with random UID
+    runAsUser: null
+    capabilities:
+      drop:
+        - ALL
+    readOnlyRootFilesystem: true
+    allowPrivilegeEscalation: false
+    seccompProfile:
+      type: RuntimeDefault
+  ingress:
+    annotations:
+      # https://projectcontour.io/docs/main/config/annotations/
+      projectcontour.io/response-timeout: "300s"
+      # https://www.envoyproxy.io/docs/envoy/latest/configuration/http/http_filters/router_filter#config-http-filters-router-x-envoy-retry-on
+      # projectcontour.io/retry-on: "5xx,gateway-error"
+      nginx.ingress.kubernetes.io/proxy-body-size: "0"
+  resources:
+    limits:
+      cpu: 1000m
+      memory: 3Gi
+    requests:
+      cpu: 400m
+      memory: 2Gi
+  # nodeSelector is the node selector for the API v2 pods
+  nodeSelector: {}
+  # affinity is the affinity rules for the API v2 pods
+  affinity: {}
+################################################################################
+# API v3 configuration
+################################################################################
+api:
+  # logLevel: 15 # 50(CRITICAL)|40(ERROR)|30(WARNING)|20(INFO)|15(SAFEDEBUG)|10(DEBUG)|5(TRACE)
+  # subdomain is the subdomain for the API v3 service
+  subdomain: api
+  image:
+    name: platform-api
+    tag: 1.0.45
+  # autoscaling: Horizontal Pod Autoscaler configuration
+  autoscaling:
+    enabled: true
+    minReplicas: 1
+    maxReplicas: 5
+    targetCPUUtilizationPercentage: 40
+    behavior:
+      scaleDown:
+        stabilizationWindowSeconds: 300
+        policies:
+          - type: Percent
+            value: 100
+            periodSeconds: 15
+      scaleUp:
+        stabilizationWindowSeconds: 0
+        policies:
+          - type: Percent
+            value: 100
+            periodSeconds: 30
+  timeouts:
+    # natsReply is the timeout for NATS reply messages
+    natsReply: 300
+    # natsJSAck is the timeout for NATS Jetstream message acknowledgement
+    natsJSAck: 60
+    # natsJSReply is the timeout for NATS Jetstream reply messages
+    natsJSReply: 300
+  cors:
+    # allowedOrigins is the comma-separated list of allowed CORS origins
+    allowedOrigins: ""
+  # apiSecret is the Flask SECRET_KEY
+  apiSecret: somesecretkeythatisaboutfiftycharacterslong
+  # Shared token for ums and restapi for internal api calls
+  internalApis:
+    # enabled is the flag to enable internal testing API settings
+    enabled: false
+  # nameOverride and fullnameOverride are used to allow global change of the name - don't change unless you know what you are doing
+  nameOverride: "api"
+  fullnameOverride: "platform-api-v3"
+  # podAnnotations is the annotations for the API v3 pods
+  podAnnotations:
+    cluster-autoscaler.kubernetes.io/safe-to-evict: "true"
+  # podSecurityContext is the security context for the API v3 pods
+  podSecurityContext: {}
+  securityContext:
+    runAsNonRoot: true
+    # runAsUser - set to null will default to 65534 from container image - OpenShift will override with random UID
+    runAsUser: null
+    capabilities:
+      drop:
+        - ALL
+    readOnlyRootFilesystem: true
+    allowPrivilegeEscalation: false
+    seccompProfile:
+      type: RuntimeDefault
+  ingress:
+    annotations:
+      # https://projectcontour.io/docs/main/config/annotations/
+      projectcontour.io/response-timeout: "300s"
+      # https://www.envoyproxy.io/docs/envoy/latest/configuration/http/http_filters/router_filter#config-http-filters-router-x-envoy-retry-on
+      # projectcontour.io/retry-on: "5xx,gateway-error"
+      nginx.ingress.kubernetes.io/proxy-body-size: "0"
+  resources:
+    limits:
+      cpu: 1000m
+      memory: 1000Mi
+    requests:
+      cpu: 400m
+      memory: 100Mi
+  # nodeSelector is the node selector for the API v3 pods
+  nodeSelector: {}
+  # affinity is the affinity rules for the API v3 pods
+  affinity: {}
+################################################################################
+# UI Service (V2)
+################################################################################
+ui2:
+  # enabled will enable the UI (V2) service - false not supported
+  enabled: true
+  # logLevel: 15 # 50(CRITICAL)|40(ERROR)|30(WARNING)|20(INFO)|15(SAFEDEBUG)|10(DEBUG)|5(TRACE)
+  # subdomain is the subdomain for the UI (V2) service
+  subdomain: www
+  # replicaCount is the number of replicas for the UI (V2) deployment
+  replicaCount: 1
+  image:
+    name: platform-ui2
+    tag: 0.1.110
+  # nameOverride and fullnameOverride are used to allow global change of the name - don't change unless you know what you are doing
+  nameOverride: "ui2"
+  fullnameOverride: "platform-ui-v2"
+  # podAnnotations is the annotations for the UI (V2) pods
+  podAnnotations: {}
+  # podSecurityContext is the security context for the UI (V2) pods
+  podSecurityContext: {}
+  securityContext:
+    capabilities:
+      drop:
+        - ALL
+    readOnlyRootFilesystem: false # Needed for templated files
+    allowPrivilegeEscalation: false
+    runAsNonRoot: true
+    # runAsUser - set to null will default to 65534 from container image - OpenShift will override with random UID
+    runAsUser: null
+    seccompProfile:
+      type: RuntimeDefault
+  ingress:
+    annotations:
+      projectcontour.io/response-timeout: "300s"
+      ingress.kubernetes.io/force-ssl-redirect: "true" # https://projectcontour.io/docs/main/config/annotations/#other-annotations
+  resources:
+    limits:
+      cpu: 200m
+      memory: 150Mi
+    requests:
+      cpu: 50m
+      memory: 150Mi
+  # nodeSelector is the node selector for the UI (V2) pods
+  nodeSelector: {}
+  # affinity is the affinity rules for the UI (V2) pods
+  affinity: {}
+################################################################################
+# Docs Service configuration
+################################################################################
+docs:
+  # enabled will enable the Docs service
+  enabled: false
+  # logLevel: 15 # 50(CRITICAL)|40(ERROR)|30(WARNING)|20(INFO)|15(SAFEDEBUG)|10(DEBUG)|5(TRACE)
+  security:
+    # enabled will enable OAuth2 Proxy authentication for the Docs service
+    enabled: true
+    # oauthProxyImage is the Docker image for the OAuth2 Proxy
+    oauthProxyImage: quay.io/oauth2-proxy/oauth2-proxy:v7.3.0
+  # subdomain is the subdomain for the Docs service
+  subdomain: docs
+  # replicaCount is the number of replicas for the Docs deployment
+  replicaCount: 1
+  image:
+    name: platform-docs
+    tag: 1.0.807
+  # nameOverride and fullnameOverride are used to allow global change of the name - don't change unless you know what you are doing
+  nameOverride: "docs"
+  fullnameOverride: "platform-docs"
+  # podAnnotations is the annotations for the Docs pods
+  podAnnotations: {}
+  # podSecurityContext is the security context for the Docs pods
+  podSecurityContext: {}
+  securityContext:
+    runAsNonRoot: true
+    # runAsUser - set to null will default to 65534 from container image - OpenShift will override with random UID
+    runAsUser: null
+    capabilities:
+      drop:
+        - ALL
+    readOnlyRootFilesystem: false # Needed for templated files
+    allowPrivilegeEscalation: false
+    seccompProfile:
+      type: RuntimeDefault
+  ingress:
+    annotations:
+      projectcontour.io/response-timeout: "300s"
+      ingress.kubernetes.io/force-ssl-redirect: "true" # https://projectcontour.io/docs/main/config/annotations/#other-annotations
+      nginx.ingress.kubernetes.io/proxy-buffer-size: "8k"
+  resources:
+    limits:
+      cpu: 200m
+      memory: 150Mi
+    requests:
+      cpu: 50m
+      memory: 150Mi
+################################################################################
+# Internal Pypi Server configuration
+################################################################################
+pypi:
+  # enabled will enable the Pypi service
+  enabled: true
+  # logLevel: 15 # 50(CRITICAL)|40(ERROR)|30(WARNING)|20(INFO)|15(SAFEDEBUG)|10(DEBUG)|5(TRACE)
+  image:
+    name: platform-pypi
+    tag: 1.0.536
+  security:
+    # enabled will enable basic auth on the Pypi server
+    enabled: true
+    # token is the secret token for basic auth
+    token: mySecretPypiToken
+  # subdomain is the subdomain for the Pypi service
+  subdomain: pypi
+  # replicaCount is the number of replicas for the Pypi deployment
+  replicaCount: 1
+  # gunicornThreads is the number of Gunicorn worker threads
+  gunicornThreads: 10
+  # gunicornWorkers is the number of Gunicorn worker processes
+  gunicornWorkers: 1
+  timeouts:
+    # gunicorn is the timeout for Gunicorn workers
+    gunicorn: 300
+    # gunicornKeepalive is the keepalive timeout for Gunicorn workers
+    gunicornKeepalive: 45
+    # gunicornGraceful is the graceful shutdown timeout for Gunicorn workers
+    gunicornGraceful: 30
+  # nameOverride and fullnameOverride are used to allow global change of the name - don't change unless you know what you are doing
+  nameOverride: "pypi"
+  fullnameOverride: "platform-pypi"
+  # podAnnotations is the annotations for the Pypi pods
+  podAnnotations: {}
+  # podSecurityContext is the security context for the Pypi pods
+  podSecurityContext: {}
+  securityContext:
+    capabilities:
+      drop:
+        - ALL
+    readOnlyRootFilesystem: true
+    allowPrivilegeEscalation: false
+    runAsNonRoot: true
+    # runAsUser - set to null will default to 65534 from container image - OpenShift will override with random UID
+    runAsUser: null
+    seccompProfile:
+      type: RuntimeDefault
+  ingress:
+    annotations:
+      projectcontour.io/response-timeout: "300s"
+      ingress.kubernetes.io/force-ssl-redirect: "true" # https://projectcontour.io/docs/main/config/annotations/#other-annotations
+  resources:
+    limits:
+      cpu: 200m
+      memory: 150Mi
+    requests:
+      cpu: 50m
+      memory: 150Mi
+################################################################################
+# Notification Service configuration
+################################################################################
+notsvc:
+  # enabled will enable the Notification Service
+  enabled: false
+  # logLevel: 15 # 50(CRITICAL)|40(ERROR)|30(WARNING)|20(INFO)|15(SAFEDEBUG)|10(DEBUG)|5(TRACE)
+  # replicaCount is the number of replicas for the Notification Service deployment
+  replicaCount: 1
+  image:
+    # name is the name of the container image for the Notification Service
+    name: platform-ns
+    # tag is the tag of the container image for the Notification Service
+    tag: 1.0.15
+  # nameOverride is used to override the name of the Notification Service
+  # Don't change unless you know what you're doing
+  nameOverride: ""
+  # podAnnotations is a map of annotations to add to the Notification Service pods
+  podAnnotations: {}
+  # podSecurityContext is the pod security context for the Notification Service pods
+  podSecurityContext: {}
+  # securityContext is the security context for the Notification Service container
+  securityContext:
+    capabilities:
+      drop:
+        - ALL
+    readOnlyRootFilesystem: true
+    allowPrivilegeEscalation: false
+    runAsNonRoot: true
+    # runAsUser specifies the user ID to run the Notification Service container as
+    # If set to null, it defaults to 65534 from the container image
+    # OpenShift will override this with a random UID
+    runAsUser: null
+    seccompProfile:
+      type: RuntimeDefault
+  service:
+    # type specifies the type of Kubernetes service for the Notification Service
+    type: ClusterIP
+    # port specifies the port number for the Notification Service
+    port: 80
+  # resources specify the resource requirements and limits for the Notification Service container
+  resources:
+    limits:
+      # cpu specifies the CPU limit for the Notification Service container
+      cpu: 200m
+      # memory specifies the memory limit for the Notification Service container
+      memory: 1000Mi
+    requests:
+      # cpu specifies the CPU request for the Notification Service container
+      cpu: 50m
+      # memory specifies the memory request for the Notification Service container
+      memory: 150Mi
+  # nodeSelector is a map of key-value pairs used to select the nodes where the Notification Service pods should be scheduled
+  nodeSelector: {}
+  # affinity is the affinity rules for scheduling the Notification Service pods
+  affinity: {}
+#
+#
+################################################################################
+# Scalability Management Service configuration
+################################################################################
+sms:
+  # logLevel: 15 # 50(CRITICAL)|40(ERROR)|30(WARNING)|20(INFO)|15(SAFEDEBUG)|10(DEBUG)|5(TRACE)
+  replicaCount: 1
+  # clusterResourcesAPI is a beta feature - if enabled requires additional clusterrole permissions
+  clusterResourcesAPI:
+    enabled: false
+  image:
+    name: platform-sms
+    tag: 1.1.464
+  # traineeVerticalAutoscaling feature is in beta.  If set - a trainees memory resources will be
+  # monitored - and recommended changes will be added to trainee metadata - and optionally adjusted in
+  # the pods.
+  traineeVerticalAutoscaling:
+    enabled: false
+    recommendationsOnly: false
+  # timeout configuration for the sms service
+  timeouts:
+    # natsReply is the timeout for a vanilla nats message request/reply
+    natsReply: 120
+    # natsJSAck is the timeout for a nats jetstream acknowledgement
+    natsJSAck: 60
+    # natsJSReply is the timeout for a nats jetstream request/reply
+    natsJSReply: 300
+    # natsCreateStream is the timeout for creating a nats jetstream stream
+    natsCreateStream: 10
+    # natsCreateConsumer is the timeout for creating a nats jetstream consumer
+    natsCreateConsumer: 10
+    # kubernetesStateCheckMax is the maximum number of seconds to wait for a kubernetes state check
+    kubernetesStateCheckMax: 1200
+    # inactivityUnloadPersistable is the amount of time a trainee can be idle before being persisted. Needs to be > twice inactivityUnloadCheckFrequency
+    inactivityUnloadPersistable: 300 # 5 mins. in seconds
+    # inactivityDeletePersistable is the amount of time a named trainee can be idle before being deleted.
+    inactivityDeletePersistable: '315576000' # 10 * 365.25 * 24 * 3600)  # 10 years
+    # inactivityDeleteUnnamedPersistable is the amount of time an unnamed trainee can be idle before being deleted.
+    inactivityDeleteUnnamedPersistable: '345600' # 4 * 24 * 3600  # 4 days
+    # inactivityDeleteNonPersistable is the amount of time a non-persistable trainee can be idle before being deleted.
+    inactivityDeleteNonPersistable: '315576000' # 10 * 365.25 * 24 * 3600)  # 10 years
+    # inactivityUnloadCheckFrequency is the frequency of the inactivity check for unloading trainees
+    inactivityUnloadCheckFrequency: 60 # in seconds
+    # inactivityDeleteCheckFrequency is the frequency of the inactivity check for deleting trainees
+    inactivityDeleteCheckFrequency: 60 # in seconds
+    # kubernetesRequestConnection is the kubernetes api connection timeout
+    kubernetesRequestConnection: 10
+    # kubernetesRequestRead is the kubernetes api read timeout
+    kubernetesRequestRead: 10
+  # nameOverride and fullnameOverride are used to allow global change of the name - don't change unless you know what you are doing
+  nameOverride: "sms"
+  fullnameOverride: "platform-sms-v3"
+  podAnnotations: {}
+  podSecurityContext: {}
+  securityContext:
+    runAsNonRoot: true
+    # runAsUser - set to null will default to 65534 from container image - OpenShift will override with random UID
+    runAsUser: null
+    capabilities:
+      drop:
+        - ALL
+    readOnlyRootFilesystem: false # Needed for processed certs
+    allowPrivilegeEscalation: false
+    seccompProfile:
+      type: RuntimeDefault
+  service:
+    type: ClusterIP
+    port: 80
+  resources:
+    limits:
+      cpu: 200m
+      memory: 500Mi
+    requests:
+      cpu: 50m
+      memory: 150Mi
+  nodeSelector: {}
+  affinity: {}
+#
+#
+################################################################################
+# Trainee Operator configuration
+################################################################################
+operator:
+  # logLevel: 15 # 50(CRITICAL)|40(ERROR)|30(WARNING)|20(INFO)|15(SAFEDEBUG)|10(DEBUG)|5(TRACE)
+  image:
+    # name is the name of the container image for the Trainee Operator
+    name: platform-operator
+    # tag is the tag of the container image for the Trainee Operator
+    tag: 1.1.123
+  timeouts:
+    # watchingClient is the timeout for the watching client
+    watchingClient: 120
+    # watchingServer is the timeout for the watching server
+    # Server timeout should be larger than client timeout
+    watchingServer: 140
+  # replicaCount is the number of replicas for the Trainee Operator deployment
+  replicaCount: 1
+  # nameOverride is used to override the name of the Trainee Operator
+  # Don't change unless you know what you're doing
+  nameOverride: "operator"
+  # podAnnotations is a map of annotations to add to the Trainee Operator pods
+  podAnnotations: {}
+  # podSecurityContext is the pod security context for the Trainee Operator pods
+  podSecurityContext: {}
+  # securityContext is the security context for the Trainee Operator container
+  securityContext:
+    capabilities:
+      drop:
+        - ALL
+    readOnlyRootFilesystem: true
+    allowPrivilegeEscalation: false
+    runAsNonRoot: true
+    # runAsUser specifies the user ID to run the Trainee Operator container as
+    # If set to null, it defaults to 65534 from the container image
+    # OpenShift will override this with a random UID
+    runAsUser: null
+    seccompProfile:
+      type: RuntimeDefault
+  jobRunner:
+    # autoCleanup specifies whether to automatically delete the job runner CRD upon completion (success or fail)
+    autoCleanup: true
+  service:
+    # type specifies the type of Kubernetes service for the Trainee Operator
+    type: ClusterIP
+    # port specifies the port number for the Trainee Operator service
+    port: 80
+  # resources specify the resource requirements and limits for the Trainee Operator container
+  resources:
+    requests:
+      cpu: 200m
+      memory: 80Mi
+    limits:
+      cpu: 500m
+      memory: 500Mi
+  # nodeSelector is a map of key-value pairs used to select the nodes where the Trainee Operator pods should be scheduled
+  nodeSelector: {}
+  # affinity is the affinity rules for scheduling the Trainee Operator pods
+  affinity: {}
+#
+#
+################################################################################
+# Presigned URL configuration
+################################################################################
+# Currently used for a trace collection from s3 object storage
+#
+presigned:
+  # subdomain is the subdomain for the presigned URLs
+  subdomain: presigned
+  # scheme is the URL scheme for the presigned URLs
+  scheme: https
+#
+#
+################################################################################
+# Job Runner configuration
+################################################################################
+jobRunner:
+  enabled: false
+  trace:
+    # enabled specifies whether to enable core trace files in job runners
+    # Set to "true" - including quotes - to enable
+    enabled: "false"
+  image:
+    # name is the name of the container image for the Job Runner
+    name: howso-enterprise
+    # tag is the tag of the container image for the Job Runner
+    tag: platform-3.11-version-0.0.13
+    # nameOverride specifies the full image name (including registry, path, image, tag) for the worker
+    # This is used by the operator to create the worker pods
+    # Advantageous for tools like replicated KOTS that rely on overriding image names in manifests
+    # nameOverride:
+  # podSecurityContext is the pod security context for the Job Runner pods
+  podSecurityContext: {}
+  # securityContext is the security context for the Job Runner container
+  securityContext:
+    capabilities:
+      drop:
+        - ALL
+    readOnlyRootFilesystem: true
+    allowPrivilegeEscalation: false
+    runAsNonRoot: true
+    # runAsUser specifies the user ID to run the Job Runner container as
+    # If set to null, it defaults to 65534 from the container image
+    # OpenShift will override this with a random UID
+    runAsUser: null
+    seccompProfile:
+      type: RuntimeDefault
+  # resources specify the resource requirements and limits for the Job Runner container
+  resources:
+    requests:
+      cpu: "4"
+      memory: 1Gi
+    limits:
+      cpu: "8"
+      memory: null
+#
+#
+################################################################################
+# Worker configuration
+################################################################################
+worker:
+  trace:
+    # enabled specifies whether to enable collecting of core trace files in workers
+    # Set to "true" - including quotes - to enable
+    # Retrievable with the persist_trace() client function
+    enabled: "false"
+  # fullnameOverride is used to override the full name of the worker
+  # Don't change unless you know what you're doing
+  fullnameOverride: "platform-worker"
+  # podSecurityContext is the pod security context for the worker pods
+  podSecurityContext:
+    runAsNonRoot: true
+  # securityContext is the security context for the worker containers and init containers
+  securityContext:
+    capabilities:
+      drop:
+        - ALL
+    allowPrivilegeEscalation: false
+    runAsNonRoot: true
+    readOnlyRootFilesystem: true
+    # runAsUser specifies the user ID to run the worker container as
+    # If set to null, it defaults to 65534 from the container image
+    # OpenShift will override this with a random UID
+    runAsUser: null
+    seccompProfile:
+      type: RuntimeDefault
+  timeouts:
+    # natsReply is the timeout for NATS reply messages
+    natsReply: 30
+    # natsJSAck is the timeout for NATS Jetstream acknowledgements
+    natsJSAck: 60
+    # natsJSReply is the timeout for NATS Jetstream reply messages
+    natsJSReply: 120
+    # natsCreateConsumer is the timeout for creating NATS Jetstream consumers
+    natsCreateConsumer: 10
+  # defaultAmlgLibType specifies the default AMLG library type for the worker
+  defaultAmlgLibType: "-mt"
+  # resources specify the resource requirements and limits for the worker container
+  resources:
+    # policy specifies the resource scaling policy for the worker
+    # Allowed values: fixed|scale - anything other than fixed is an alpha feature
+    policy: fixed
+    singlethreaded:
+      requests:
+        memory: 200Mi
+        cpu: 300m
+      limits:
+        cpu: 1100m
+        memory: 1000Mi
+    multithreaded:
+      requests:
+        memory: 1000Mi
+        cpu: 2000m
+      limits:
+        cpu: 2000m
+        memory: null
+  # terminationGracePeriod specifies the termination grace period for the worker pods
+  terminationGracePeriod: 10
+  image:
+    # name is the name of the container image for the worker
+    name: platform-worker
+    # tag is the tag of the container image for the worker
+    tag: 1.3.24
+    # nameOverride specifies the full image name (including registry, path, image, tag) for the worker
+    # This is used by the operator to create the worker pods
+    # Advantageous for tools like replicated KOTS that rely on overriding image names in manifests
+    # nameOverride:
+  # podAnnotations is a map of annotations to add to the worker pods
+  podAnnotations: {}
+#
+#
+################################################################################
+# Image Loader configuration
+# - Daemonset for pre-downloading worker image on nodes
+################################################################################
+imageLoader:
+  # enabled specifies whether to enable the DaemonSet for pre-downloading worker images on nodes
+  enabled: true
+  # pauseImage is the image used for the pause container in the DaemonSet
+  # It does not use the global image registry configuration
+  pauseImage: registry.k8s.io/pause:3.9
+  # podAnnotations is a map of annotations to add to the image loader pods
+  podAnnotations: {}
+  # podSecurityContext is the pod security context for the image loader pods
+  podSecurityContext: {}
+  # securityContext is the security context for the image loader containers
+  securityContext:
+    capabilities:
+      drop:
+        - ALL
+    readOnlyRootFilesystem: true
+    allowPrivilegeEscalation: false
+    runAsNonRoot: true
+    # runAsUser specifies the user ID to run the image loader containers as
+    # If set to null, it defaults to 65534 from the container image
+    # OpenShift will override this with a random UID
+    runAsUser: null
+    seccompProfile:
+      type: RuntimeDefault
+  # resources specify the resource requirements and limits for the image loader containers
+  resources:
+    limits:
+      cpu: 100m
+      memory: 100Mi
+    requests:
+      cpu: 100m
+      memory: 100Mi
+################################################################################
+# Scheduled Jobs configuration
+################################################################################
+jobs:
+  # traineeArchiver is a component that will perform background tasks on saved trainees, including updating the Howso Engine version
+  traineeArchiver:
+    # enabled specifies whether to run the trainee archiver as a CronJob
+    enabled: true
+    image:
+      # name is the name of the container image for the trainee archiver
+      name: platform-trainee-archiver
+      # tag is the tag of the container image for the trainee archiver
+      tag: 1.1.273
+    # schedule is the cron schedule for the trainee archiver
+    schedule: "0 3 * * *" # every day at 3am
+    # backoffLimit is the number of retries before marking the job as failed
+    # 0 will not retry
+    backoffLimit: 0
+    # activeDeadlineSeconds is the time the job is allowed to run
+    activeDeadlineSeconds: 900 # 15 minutes
+    # podSecurityContext is the pod security context for the trainee archiver pods
+    podSecurityContext: {}
+    # podAnnotations is a map of annotations to add to the trainee archiver pods
+    podAnnotations: {}
+    # securityContext is the security context for the trainee archiver container
+    securityContext:
+      capabilities:
+        drop:
+          - ALL
+      readOnlyRootFilesystem: true
+      allowPrivilegeEscalation: false
+      runAsNonRoot: true
+      # runAsUser specifies the user ID to run the trainee archiver container as
+      # If set to null, it defaults to 65534 from the container image
+      # OpenShift will override this with a random UID
+      runAsUser: null
+      seccompProfile:
+        type: RuntimeDefault
+    # resources specify the resource requirements and limits for the trainee archiver container
+    resources:
+      requests:
+        cpu: 100m
+        memory: 1Gi
+      limits:
+        cpu: 8000m
+        memory: 20Gi
+  # certGenerator is a component that will create a CA for the platform
+  certGenerator:
+    # enabled specifies whether to run the cert generator as a CronJob and a one-off initial job
+    enabled: true
+    # logLevel: 15 # 50(CRITICAL)|40(ERROR)|30(WARNING)|20(INFO)|15(SAFEDEBUG)|10(DEBUG)|5(TRACE)
+    image:
+      # tag is the tag of the container image for the cert generator
+      tag: 1.0.18
+      # name is the name of the container image for the cert generator
+      name: platform-cert-generator
+    # schedule is the cron schedule for the cert generator
+    schedule: "0 3 * * 0" # every Sunday at 3am
+    # backoffLimit is the number of retries before marking the job as failed
+    backoffLimit: 100
+    # activeDeadlineSeconds is the time the job is allowed to run
+    activeDeadlineSeconds: 300 # 5 minutes
+    # expiryThreshold is the threshold for certificate expiration
+    expiryThreshold: 720h # 30 days
+    # newCertDuration is the duration for newly generated certificates
+    newCertDuration: 2160h # 90 days
+    # podAnnotations is a map of annotations to add to the cert generator pods
+    podAnnotations: {}
+    # podSecurityContext is the pod security context for the cert generator pods
+    podSecurityContext: {}
+    # securityContext is the security context for the cert generator container
+    securityContext:
+      # runAsUser specifies the user ID to run the cert generator container as
+      # If set to null, it defaults to 65534 from the container image
+      # OpenShift will override this with a random UID
+      runAsUser: null
+      runAsNonRoot: true
+      seccompProfile:
+        type: RuntimeDefault
+      readOnlyRootFilesystem: true
+      allowPrivilegeEscalation: false
+      capabilities:
+        drop:
+          - ALL
+    # resources specify the resource requirements and limits for the cert generator container
+    resources:
+      requests:
+        cpu: 100m
+        memory: 200Mi
+      limits:
+        cpu: 200m
+        memory: 200Mi
+global:
+  replicated:
+    channelName: Stable
+    customerEmail: lakshminarayan5@dbs.com
+    customerName: DBS Bank
+    dockerconfigjson: eyJhdXRocyI6eyJwcm94eS5yZXBsaWNhdGVkLmNvbSI6eyJhdXRoIjoiTW1KUVJsaG1TbXR2TUVKcGNrRjRZa2Q0Tm5RM1NITlFWWEZHT2pKaVVFWllaa3ByYnpCQ2FYSkJlR0pIZURaME4waHpVRlZ4Umc9PSJ9LCJyZWdpc3RyeS5ob3cuc28iOnsiYXV0aCI6Ik1tSlFSbGhtU210dk1FSnBja0Y0WWtkNE5uUTNTSE5RVlhGR09qSmlVRVpZWmtwcmJ6QkNhWEpCZUdKSGVEWjBOMGh6VUZWeFJnPT0ifX19
+    licenseFields:
+      expires_at:
+        name: expires_at
+        title: Expiration
+        description: License Expiration
+        value: ""
+        valueType: String
+        signature:
+          v1: hlFBfU2kOYpoTLO1OvfDEu6zkZ+8y4Iuo9SBl1nMOJZry59NsH97DUYvFVFHlLckj0hIfPHncw1tzSUaCu9iHNQ3nfjoFSA62Bc5UOzikhff+krGKCF9G46PMCJBpJmrUSYCkM1T0o+cRgJaR0mEhocdJeCv2sjQSws0TOUDCwWqxRMSPp/vU4Z0/Q4rz2GF7H29nKHOYWq5WAc6mQ9GosmjJ3xg4eLpBAH7RlLySuqA0nWHh8KJZNEJHhId89N+iSsSkbvpaarWqcTfoNwrjoZCy/Gm+eDtVBNgd1bqpIHeHHvp5d08Vf9zVjZ2PtYsZuGcLcsz552OP3GkpjeviA==
+    licenseID: 2bPFXfJko0BirAxbGx6t7HsPUqF
+    licenseType: prod

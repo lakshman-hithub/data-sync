@@ -1,0 +1,12 @@
+{{ if .Values.docs.enabled }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: platform-docs-tls-sidecar-nginx-config
+data:
+  {{ if .Values.docs.security.enabled }}
+  nginx.conf: {{ .Files.Get "files/docs.tls.oauth_proxy.nginx.conf" | indent 4 | quote }}
+  {{ else }}
+  nginx.conf: {{ .Files.Get "files/docs.tls.nginx.conf" | indent 4 | quote }}
+  {{ end}}
+{{- end }}

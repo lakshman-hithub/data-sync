@@ -1,0 +1,50 @@
+{{ if .Values.docs.enabled }}
+{{- $fullName := include "howso-platform.docs.fullname" . -}}
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: {{ $fullName }}
+  labels:
+    {{- include "howso-platform.docs.labels" . | nindent 4 }}
+  annotations:
+  {{ if .Values.podTLS.enabled }}
+    route.openshift.io/termination: "reencrypt"  #https://docs.openshift.com/container-platform/4.7/networking/routes/route-configuration.html#nw-ingress-creating-a-route-via-an-ingress_route-configuration
+    nginx.ingress.kubernetes.io/backend-protocol: "HTTPS" # https://kubernetes.github.io/ingress-nginx/user-guide/nginx-configuration/annotations/#backend-protocol
+  {{ end }}
+  {{- with .Values.docs.ingress.annotations }}
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+  {{ if .Values.overrideIngressCerts.enabled }}
+    kubernetes.io/tls-acme: "false"
+  {{ else }} 
+    kubernetes.io/tls-acme: "true"
+    {{- if .Values.internalPKI.useClusterIssuer }}
+    cert-manager.io/cluster-issuer: {{ default .Values.internalPKI.rootCASecretName .Values.internalPKI.ingressCertIssuer | quote }}
+    {{- else }}
+    cert-manager.io/issuer: {{ default .Values.internalPKI.rootCASecretName .Values.internalPKI.ingressCertIssuer | quote }}
+    {{- end }}
+  {{ end }} 
+spec:
+  {{- if .Values.ingress.ingressClassName }}
+  ingressClassName: {{ .Values.ingress.ingressClassName }}
+  {{- end }}
+  tls:
+    - hosts:
+        - {{ .Values.docs.subdomain }}.{{ .Values.domain }}
+      {{ if .Values.overrideIngressCerts.enabled }}
+      secretName: {{ .Values.overrideIngressCerts.secretName }} 
+      {{ else }} 
+      secretName: platform-docs-ingress-tls 
+      {{ end }}
+  rules:
+    - host: {{ .Values.docs.subdomain }}.{{ .Values.domain }} 
+      http:
+        paths:
+          - path: / 
+            pathType: Prefix
+            backend:
+              service:
+                name: {{ $fullName }}
+                port: 
+                  number: {{ if .Values.podTLS.enabled }}8443{{ else }}4180{{ end }}
+{{- end }}

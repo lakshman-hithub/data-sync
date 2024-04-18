@@ -1,0 +1,39 @@
+{{ if .Values.networkPolicies.enabled }}
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: platform-default-deny-ingress-policy
+spec:
+  podSelector: {}
+  policyTypes:
+  - Ingress
+{{ end }}
+---
+{{ if .Values.networkPolicies.egress.enabled }}
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: platform-default-deny-egress-policy
+spec:
+  podSelector: {}
+  policyTypes:
+  - Egress
+---
+# Allow DNS resolution
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: platform-dns-egress-policy
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/part-of: howso-platform
+  policyTypes:
+  - Egress
+  egress:
+  - ports:
+    - protocol: UDP
+      port: 53
+    - protocol: TCP
+      port: 53
+{{ end }}

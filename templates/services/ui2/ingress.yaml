@@ -1,0 +1,92 @@
+{{ if .Values.ui2.enabled }}
+{{- $fullName := include "howso-platform.ui2.fullname" . -}}
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: {{ $fullName }}
+  labels:
+    {{- include "howso-platform.ui2.labels" . | nindent 4 }}
+  annotations:
+  {{ if .Values.podTLS.enabled }}
+    route.openshift.io/termination: "reencrypt"  #https://docs.openshift.com/container-platform/4.7/networking/routes/route-configuration.html#nw-ingress-creating-a-route-via-an-ingress_route-configuration
+    nginx.ingress.kubernetes.io/backend-protocol: "HTTPS" # https://kubernetes.github.io/ingress-nginx/user-guide/nginx-configuration/annotations/#backend-protocol
+  {{ end }}
+  {{- with .Values.ui2.ingress.annotations }}
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+  {{ if .Values.overrideIngressCerts.enabled }}
+    kubernetes.io/tls-acme: "false"
+  {{ else }}
+    kubernetes.io/tls-acme: "true"
+    {{- if .Values.internalPKI.useClusterIssuer }}
+    cert-manager.io/cluster-issuer: {{ default .Values.internalPKI.rootCASecretName .Values.internalPKI.ingressCertIssuer | quote }}
+    {{- else }}
+    cert-manager.io/issuer: {{ default .Values.internalPKI.rootCASecretName .Values.internalPKI.ingressCertIssuer | quote }}
+    {{- end }}
+  {{ end }}
+spec:
+  {{- if .Values.ingress.ingressClassName }}
+  ingressClassName: {{ .Values.ingress.ingressClassName }}
+  {{- end }}
+  tls:
+    - hosts:
+        - {{ .Values.ui2.subdomain }}.{{ .Values.domain }}
+        - {{ .Values.domain }}
+        - {{ .Values.presigned.subdomain}}.{{ .Values.domain }}
+      {{ if .Values.overrideIngressCerts.enabled }}
+      secretName: {{ .Values.overrideIngressCerts.secretName }}
+      {{ else }}
+      secretName: platform-ui-v2-ingress-tls
+      {{ end }}
+  rules:
+    - host: {{ .Values.ui2.subdomain }}.{{ .Values.domain }}
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: {{ $fullName }}
+                port:
+                  number: {{ if .Values.podTLS.enabled }}8443{{ else }}8000{{ end }}
+    - host: {{ .Values.domain }}
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: {{ $fullName }}
+                port:
+                  number: {{ if .Values.podTLS.enabled }}8443{{ else }}8000{{ end }}
+    # Presigned URLs are destined for the minio server - but in order to work, they need their
+    # host header rewritten. The UI nginx configuration will do this work.
+    # This is not intended for general purpose access to minio, only certain prefixes are allowed
+    - host: {{ .Values.presigned.subdomain}}.{{ .Values.domain }}
+      http:
+        paths:
+          # Jobs prefix
+          - path: /{{ .Values.datastores.objectStore.bucketName }}/{{ .Values.datastores.objectStore.locations.jobs }}/
+            pathType: Prefix
+            backend:
+              service:
+                name: {{ $fullName }}
+                port:
+                  number: {{ if .Values.podTLS.enabled }}8443{{ else }}8000{{ end }}
+          # Data prefix
+          - path: /{{ .Values.datastores.objectStore.bucketName }}/{{ .Values.datastores.objectStore.locations.data }}/
+            pathType: Prefix
+            backend:
+              service:
+                name: {{ $fullName }}
+                port:
+                  number: {{ if .Values.podTLS.enabled }}8443{{ else }}8000{{ end }}
+          # Trainees prefix
+          - path: /{{ if .Values.datastores.objectStore.locations.trainees }}{{ .Values.datastores.objectStore.bucketName }}/{{ .Values.datastores.objectStore.locations.trainees }}{{ else }}{{ .Values.datastores.objectStore.bucketName }}/trace{{ end }}/
+            pathType: Prefix
+            backend:
+              service:
+                name: {{ $fullName }}
+                port:
+                  number: {{ if .Values.podTLS.enabled }}8443{{ else }}8000{{ end }}
+{{ end }}

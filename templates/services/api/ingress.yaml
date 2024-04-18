@@ -1,0 +1,56 @@
+{{- $fullName := include "howso-platform.api.fullname" . -}}
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: {{ $fullName }}
+  labels:
+    {{- include "howso-platform.api.labels" . | nindent 4 }}
+  annotations:
+  {{ if .Values.podTLS.enabled }}
+    route.openshift.io/termination: "reencrypt"  #https://docs.openshift.com/container-platform/4.7/networking/routes/route-configuration.html#nw-ingress-creating-a-route-via-an-ingress_route-configuration
+    nginx.ingress.kubernetes.io/backend-protocol: "HTTPS" # https://kubernetes.github.io/ingress-nginx/user-guide/nginx-configuration/annotations/#backend-protocol
+  {{ end }}
+  {{- with .Values.api.ingress.annotations }}
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+  {{ if .Values.overrideIngressCerts.enabled }}
+    kubernetes.io/tls-acme: "false"
+  {{ else }}
+    kubernetes.io/tls-acme: "true"
+    {{- if .Values.internalPKI.useClusterIssuer }}
+    cert-manager.io/cluster-issuer: {{ default .Values.internalPKI.rootCASecretName .Values.internalPKI.ingressCertIssuer | quote }}
+    {{- else }}
+    cert-manager.io/issuer: {{ default .Values.internalPKI.rootCASecretName .Values.internalPKI.ingressCertIssuer | quote }}
+    {{- end }}
+  {{ end }}
+spec:
+  {{- if .Values.ingress.ingressClassName }}
+  ingressClassName: {{ .Values.ingress.ingressClassName }}
+  {{- end }}
+  tls:
+    - hosts:
+        - {{ .Values.api.subdomain }}.{{ .Values.domain }}
+      {{ if .Values.overrideIngressCerts.enabled }}
+      secretName: {{ .Values.overrideIngressCerts.secretName }}
+      {{ else }}
+      secretName: platform-api-v3-ingress-tls
+      {{ end }}
+  rules:
+    - host: {{ .Values.api.subdomain }}.{{ .Values.domain }}
+      http:
+        paths:
+          - path: /api/v3/
+            pathType: Prefix
+            backend:
+              service:
+                name: platform-api-v3
+                port:
+                  number: {{ if .Values.podTLS.enabled }}8443{{ else }}8080{{ end }}
+          - path: /openapi.json
+            pathType: Prefix
+            backend:
+              service:
+                name: platform-api-v3
+                port:
+                  number: {{ if .Values.podTLS.enabled }}8443{{ else }}8080{{ end }}
+

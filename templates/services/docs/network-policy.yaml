@@ -1,0 +1,47 @@
+{{ if .Values.networkPolicies.enabled }}
+kind: NetworkPolicy
+apiVersion: networking.k8s.io/v1
+metadata:
+  name: platform-docs-ingress-policy
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/component: platform-docs 
+  policyTypes:
+  - Ingress
+  ingress:
+  - ports:
+    - protocol: TCP
+      port: 8443
+    - protocol: TCP
+      port: 8080
+    - protocol: TCP
+      port: 4180
+{{ end }}
+{{ if .Values.networkPolicies.egress.enabled }}
+kind: NetworkPolicy
+apiVersion: networking.k8s.io/v1
+metadata:
+  name: platform-docs-egress-policy
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/component: platform-docs 
+  policyTypes:
+  - Egress
+  egress: 
+   - {}
+#  - to:
+#    - podSelector:
+#        matchLabels:
+#          app.kubernetes.io/component: platform-docs 
+#  - to:
+#    - podSelector:
+#        matchLabels:
+#          app.kubernetes.io/component: user-management-service 
+#    ports:
+#    - protocol: TCP
+#      port: 8000 
+#    - protocol: TCP
+#      port: 8443 
+{{ end }}

@@ -1,0 +1,175 @@
+{{ if .Values.notsvc.enabled }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: platform-notsvc
+  labels:
+    app.kubernetes.io/part-of: howso-platform
+    app.kubernetes.io/component: notification-service
+    {{- include "howso-platform.ns.labels" . | nindent 4 }}
+spec:
+  replicas: {{ .Values.notsvc.replicaCount }}
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+  minReadySeconds: 10
+  selector:
+    matchLabels:
+      {{- include "howso-platform.ns.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      annotations:
+      {{- with .Values.notsvc.podAnnotations }}
+        {{ toYaml . | nindent 8 }}
+      {{- end }}
+        checksum/nats: {{ include (print $.Template.BasePath "/configmaps/configmap-nats-connection.yml") . | sha256sum }} 
+        checksum/ums: {{ include (print $.Template.BasePath "/configmaps/configmap-ums-connection.yml") . | sha256sum }} 
+        checksum/obj: {{ include (print $.Template.BasePath "/configmaps/configmap-object-store-connection.yml") . | sha256sum }} 
+        checksum/redis: {{ include (print $.Template.BasePath "/configmaps/configmap-redis-connection.yml") . | sha256sum }} 
+        checksum/restapi: {{ include (print $.Template.BasePath "/configmaps/configmap-restapi-connection.yml") . | sha256sum }} 
+        checksum/pgplatform: {{ include (print $.Template.BasePath "/configmaps/configmap-postgres-platform-connection.yml") . | sha256sum }} 
+        checksum/apitoken: {{ include (print $.Template.BasePath "/services/restapi/restapi-ums-api-token.yaml") . | sha256sum }}
+        checksum/nstoken: {{ include (print $.Template.BasePath "/services/notsvc/ns-system-account-secret.yaml") . | sha256sum }}
+      labels:
+        app.kubernetes.io/part-of: howso-platform
+        app.kubernetes.io/component: notification-service 
+        {{- include "howso-platform.ns.selectorLabels" . | nindent 8 }}
+    spec:
+      tolerations:
+        {{- toYaml .Values.tolerations.services | nindent 8 }}
+      {{- with .Values.images.pullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      serviceAccountName: platform-minimal-serviceaccount
+      serviceAccount: platform-minimal-serviceaccount
+      securityContext:
+        {{- toYaml .Values.notsvc.podSecurityContext | nindent 8 }}
+      containers:
+        - name: ns 
+          securityContext:
+            {{- toYaml .Values.notsvc.securityContext | nindent 12 }}
+          image: {{ include "howso-platform.imagePath" (dict "root" $ "image" .Values.notsvc.image) | quote }}
+          imagePullPolicy: {{ .Values.images.pullPolicy }}
+          envFrom:
+          - configMapRef:
+              name: platform-configmap
+          - configMapRef:
+              name: platform-configmap-postgres-platform-connection
+          - configMapRef:
+              name: platform-configmap-redis-connection 
+          - configMapRef:
+              name: platform-configmap-object-store-connection
+          - configMapRef:
+              name: platform-configmap-nats-connection
+          - configMapRef:
+              name: platform-configmap-replicated
+          - configMapRef:
+              name: platform-configmap-ums-connection
+          - configMapRef:
+              name: platform-configmap-restapi-connection
+          env:
+          - name: NAMESPACE
+            value: {{ .Release.Namespace }}
+          - name: HOWSO_PLATFORM_POSTGRES_PASSWORD
+            valueFrom:
+              secretKeyRef:
+                name: {{if .Values.datastores.postgres.platform.existingSecret }}{{ .Values.datastores.postgres.platform.credentialsSecretName }}{{ else }}platform-postgres-platform-credentials{{ end }} 
+                key: {{if .Values.datastores.postgres.platform.existingSecret }}{{ .Values.datastores.postgres.platform.passwordDataKey }}{{ else }}password{{ end }} 
+          - name: REQUESTS_CA_BUNDLE
+            value: "/certs/platform-ca-publickey.crt"
+          - name: HOWSO_LOG_LEVEL
+            value: {{ if (.Values.notsvc.logLevel) }}{{ .Values.notsvc.logLevel | quote }}{{ else }}{{ .Values.logLevel | quote }}{{ end }}
+          - name: HOWSO_LOG_FORMAT
+            value: {{ .Values.logFormat | quote }} 
+          ports:
+            - containerPort: 5555
+          livenessProbe:
+            exec:
+              command:
+              - /bin/healthcheck
+            failureThreshold: 1
+            timeoutSeconds: 20
+            periodSeconds: 60
+          volumeMounts:
+          - name: redis-password
+            mountPath: /secrets/redis-password
+            readOnly: true
+          - name: objstore-credentials
+            mountPath: /secrets/objstore-credentials
+            readOnly: true
+          - mountPath: /certs/
+            name: {{ .Values.internalPKI.rootCASecretName }}
+          - mountPath: /system-accounts/ns
+            name: platform-notsvc-system-account-secret
+          {{- if .Values.nats.tls.enabled }}
+          - mountPath: /client-certs/nats/
+            name: platform-notsvc-nats-client-tls
+          {{- end }}
+          {{- if .Values.datastores.redis.clientVerification }}
+          - mountPath: /client-certs/redis/
+            name: redis-client-tls
+          {{- end }}
+          {{- if and (.Values.datastores.redis.serverVerification) (.Values.datastores.redis.serverVerificationCustomCertChain) }}
+          - mountPath: /access-certs/redis/
+            name: redis-server-ca
+          {{- end }}
+          resources:
+            {{- toYaml .Values.notsvc.resources | nindent 12 }}
+      {{- with .Values.notsvc.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.notsvc.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.notsvc.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      volumes:
+      - name: redis-password
+        secret:
+          secretName: {{if .Values.datastores.redis.existingSecret }}{{ .Values.datastores.redis.credentialsSecretName }}{{ else }}platform-redis-credentials{{ end }}
+      - name: objstore-credentials
+        secret:
+          defaultMode: 420
+          secretName: {{ if .Values.datastores.objectStore.existingSecret }}{{ .Values.datastores.objectStore.credentialsSecretName }}{{ else }}platform-object-store-credentials{{ end }}
+      {{- if .Values.nats.tls.enabled }}
+      - name: platform-notsvc-nats-client-tls
+        secret:
+          defaultMode: 420
+          secretName: platform-notsvc-nats-client-tls
+      {{- end }}
+      - name: {{ .Values.internalPKI.rootCASecretName }}
+        secret:
+          defaultMode: 420
+          secretName: {{ .Values.internalPKI.rootCASecretName }}
+          items:
+            - key: ca.crt
+              path: platform-ca-publickey.crt
+      {{- if .Values.datastores.redis.clientVerification }}
+      - name: redis-client-tls
+        secret:
+          defaultMode: 420
+          secretName: {{ .Values.datastores.redis.clientCertSecretName }} 
+      {{- end }}
+      {{- if and (.Values.datastores.redis.serverVerification) (.Values.datastores.redis.serverVerificationCustomCertChain) }}
+      - name: redis-server-ca
+        secret:
+          defaultMode: 420
+          secretName: {{ default .Values.internalPKI.rootCASecretName .Values.datastores.redis.serverCertChainSecretName }} 
+          items:
+            - key: ca.crt 
+              path: redis-server-ca.crt
+      {{- end }}
+      # For kubernetes access
+      - name: platform-notsvc-system-account-secret
+        secret:
+          defaultMode: 420
+          secretName: platform-notification-service-system-account-secret
+      automountServiceAccountToken: false 
+{{ end }}

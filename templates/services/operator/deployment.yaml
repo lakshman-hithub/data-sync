@@ -1,0 +1,116 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: platform-operator
+  labels:
+    app.kubernetes.io/part-of: howso-platform
+    app.kubernetes.io/component: trainee-operator
+    {{- include "howso-platform.operator.labels" . | nindent 4 }}
+spec:
+  replicas: {{ .Values.operator.replicaCount }}
+  selector:
+    matchLabels:
+      {{- include "howso-platform.operator.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      annotations:
+      {{- with .Values.operator.podAnnotations }}
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+        checksum/nats: {{ include (print $.Template.BasePath "/configmaps/configmap-nats-connection.yml") . | sha256sum }}
+        checksum/obj: {{ include (print $.Template.BasePath "/configmaps/configmap-object-store-connection.yml") . | sha256sum }}
+        checksum/redis: {{ include (print $.Template.BasePath "/configmaps/configmap-redis-connection.yml") . | sha256sum }}
+        checksum/worker: {{ include (print $.Template.BasePath "/configmaps/configmap-worker-conf.yml") . | sha256sum }}
+      labels:
+        app.kubernetes.io/part-of: howso-platform
+        app.kubernetes.io/component: trainee-operator
+        {{- include "howso-platform.operator.selectorLabels" . | nindent 8 }}
+    spec:
+      tolerations:
+        {{- toYaml .Values.tolerations.services | nindent 8 }}
+      {{- with .Values.images.pullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      serviceAccountName: platform-operator-serviceaccount
+      securityContext:
+        {{- toYaml .Values.operator.podSecurityContext | nindent 8 }}
+      containers:
+        - name: {{ .Chart.Name }}
+          securityContext:
+            {{- toYaml .Values.operator.securityContext | nindent 12 }}
+          image: {{ include "howso-platform.imagePath" (dict "root" $ "image" .Values.operator.image) | quote }}
+          imagePullPolicy: {{ .Values.images.pullPolicy }}
+          envFrom:
+          - configMapRef:
+              name: platform-configmap
+          - configMapRef:
+              name: platform-configmap-object-store-connection
+          - configMapRef:
+              name: platform-configmap-redis-connection
+          - configMapRef:
+              name: platform-configmap-nats-connection
+          - configMapRef:
+              name: platform-configmap-worker-conf
+          env:
+          - name: WATCHING_CLIENT_TIMEOUT
+            value: {{ .Values.operator.timeouts.watchingClient | quote }}
+          - name: WATCHING_SERVER_TIMEOUT
+            value: {{ .Values.operator.timeouts.watchingServer | quote }}
+          - name: HOWSO_JOB_RUNNER_TOLERATIONS
+            value: {{ .Values.tolerations.workers | toJson | quote }}
+          - name: HOWSO_JOB_RUNNER_IMAGE
+            value: "{{ if .Values.jobRunner.image.nameOverride }}{{ .Values.jobRunner.image.nameOverride }}:{{ .Values.jobRunner.image.tag }}{{ else }}{{ include "howso-platform.imagePath" (dict "root" $ "image" .Values.jobRunner.image)  }}{{ end }}"
+          - name: HOWSO_WORKER_IMAGE
+            value: "{{ if .Values.worker.image.nameOverride }}{{ .Values.worker.image.nameOverride }}:{{ .Values.worker.image.tag }}{{ else }}{{ include "howso-platform.imagePath" (dict "root" $ "image" .Values.worker.image)  }}{{ end }}"
+          - name: HOWSO_WORKER_IMAGE_PULL_SECRETS
+            value: {{ .Values.images.pullSecrets  | toJson | quote }}
+          - name: HOWSO_IMAGE_REGISTRY
+            value: "{{ if (.Values.images.registryNamespace) }}{{- printf "%s/%s" .Values.images.registry .Values.images.registryNamespace | trim -}}{{ else }}{{ .Values.images.registry }}{{ end }}"
+          - name: HOWSO_JOB_RUNNER_CLEANUP
+            value: {{ .Values.operator.jobRunner.autoCleanup  | toJson | quote }}
+          - name: NAMESPACE
+            value: {{ .Release.Namespace }}
+          - name: TERMINATION_GRACE_PERIOD
+            value: {{ .Values.worker.terminationGracePeriod | quote }}
+          - name: HOWSO_LOG_LEVEL
+            value: {{ if (.Values.operator.logLevel) }}{{ .Values.operator.logLevel | quote }}{{ else }}{{ .Values.logLevel | quote }}{{ end }}
+          - name: HOWSO_LOG_FORMAT
+            value: {{ if (.Values.operator.logFormat) }}{{ .Values.operator.logFormat | quote }}{{ else }}{{ .Values.logFormat | quote }}{{ end }}
+          ports:
+            - name: http
+              containerPort: 80
+              protocol: TCP
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: 8080
+            periodSeconds: 60
+            timeoutSeconds: 2
+          {{- if .Values.nats.tls.enabled }}
+          volumeMounts:
+            - mountPath: /client-certs/nats/
+              name: platform-operator-nats-client-tls
+          {{- end }}
+          resources:
+            {{- toYaml .Values.operator.resources | nindent 12 }}
+      {{- with .Values.operator.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.operator.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.operator.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- if .Values.nats.tls.enabled }}
+      volumes:
+        - name: platform-operator-nats-client-tls
+          secret:
+            defaultMode: 420
+            secretName: platform-operator-nats-client-tls
+      {{- end }}
+      automountServiceAccountToken: true

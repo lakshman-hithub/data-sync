@@ -1,0 +1,21 @@
+---
+{{ if .Values.networkPolicies.egress.enabled }}
+kind: NetworkPolicy
+apiVersion: networking.k8s.io/v1
+metadata:
+  name: platform-job-runner-egress-policy
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/component: job-runner
+  policyTypes:
+  - Egress
+  egress:
+  - to:
+    - podSelector:
+        matchLabels:
+          app.kubernetes.io/component: object-store
+    ports:
+    - protocol: TCP
+      port: 9000
+{{ end }}

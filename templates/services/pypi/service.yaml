@@ -1,0 +1,28 @@
+{{- if .Values.pypi.enabled }}
+apiVersion: v1
+kind: Service
+metadata:
+  annotations:
+  {{ if .Values.podTLS.enabled }}
+    projectcontour.io/upstream-protocol.tls: 8443,https  # https://projectcontour.io/docs/main/config/upstream-tls/
+  {{ end }}
+  name: {{ include "howso-platform.pypi.fullname" . }}
+  labels:
+    {{- include "howso-platform.pypi.labels" . | nindent 4 }}
+spec:
+  type: ClusterIP 
+  ports:
+    {{ if .Values.podTLS.enabled }}
+    - port: 8443 
+      targetPort: https
+      protocol: TCP
+      name: https
+    {{ else }}
+    - port: 8080 
+      targetPort: 8080 
+      protocol: TCP
+      name: http
+    {{ end }}
+  selector:
+    {{- include "howso-platform.pypi.selectorLabels" . | nindent 4 }}
+{{- end }}
